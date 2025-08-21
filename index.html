@@ -356,8 +356,17 @@
             const amount = rand(0.0001, 0.005);
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
-            // Fetch mint info for decimals
-            const mintInfo = await splToken.getMint(connection, mintPublicKey);
+            // --- FIX APPLIED HERE ---
+            // In spl-token@0.4.6, the `getMint` function is part of a `Token` class instance.
+            // The old `splToken.getMint` function is not available in this version.
+            // We create a Token instance and then call `getMintInfo()` on it.
+            const token = new splToken.Token(
+                connection,
+                mintPublicKey,
+                splToken.TOKEN_PROGRAM_ID,
+                wallet // payer
+            );
+            const mintInfo = await token.getMintInfo();
             const decimals = mintInfo.decimals;
             const amountInLamports = Math.floor(amount * Math.pow(10, decimals));
 
