@@ -202,34 +202,32 @@
             const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
 
             while (faucetRun) {
-                for (const addr of addresses) {
-                    // Check if the loop has been stopped before each iteration
-                    if (!faucetRun) break;
-                    
-                    try {
-                        faucetStats.total++;
-                        updateF();
-                        const pk = new solanaWeb3.PublicKey(addr);
-                        fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
-                        const sig = await connection.requestAirdrop(pk, lamports);
-                        fLog(`Airdrop TX → ${sig}`);
+                // Select a random address from the list
+                const addr = addresses[Math.floor(Math.random() * addresses.length)];
+                
+                try {
+                    faucetStats.total++;
+                    updateF();
+                    const pk = new solanaWeb3.PublicKey(addr);
+                    fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
+                    const sig = await connection.requestAirdrop(pk, lamports);
+                    fLog(`Airdrop TX → ${sig}`);
 
-                        // Wait for transaction confirmation
-                        fLog(`Waiting for confirmation...`);
-                        await connection.confirmTransaction(sig, 'confirmed');
-                        faucetStats.ok++;
-                        updateF();
-                        fLog(`✅ Airdrop confirmed!`);
-                    } catch (e) {
-                        faucetStats.err++;
-                        updateF();
-                        fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
-                    }
-                    // Wait for a random delay before the next airdrop
-                    const delay = Math.floor(rand(1000, 5000));
-                    fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
-                    await sleep(delay);
+                    // Wait for transaction confirmation
+                    fLog(`Waiting for confirmation...`);
+                    await connection.confirmTransaction(sig, 'confirmed');
+                    faucetStats.ok++;
+                    updateF();
+                    fLog(`✅ Airdrop confirmed!`);
+                } catch (e) {
+                    faucetStats.err++;
+                    updateF();
+                    fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
                 }
+                // Wait for a random delay before the next airdrop
+                const delay = Math.floor(rand(1000, 5000));
+                fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
+                await sleep(delay);
             }
             fLog('🛑 Faucet loop stopped.');
         }
