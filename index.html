@@ -47,7 +47,6 @@
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             z-index: 1000;
-            display: none;
         }
         #message-box.show {
             display: block;
@@ -129,6 +128,7 @@
                 </div>
                 <div>
                     <label>LAYER mint</label>
+                    <!-- The LAYER token mint address provided by the user -->
                     <input id="layerMint" value="LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc" />
                 </div>
             </div>
@@ -184,7 +184,6 @@
         let walletProvider = null;
         let faucetStats = { total: 0, ok: 0, err: 0 };
         let senderStats = { sent: 0, ok: 0, err: 0 };
-        let layerDecimals = 9; // Default, will be fetched
 
         window.onload = function() {
             // Wait for libraries to be loaded
@@ -384,21 +383,6 @@
             }
         }
 
-        // Fetch token account information to get decimals
-        async function fetchTokenInfo(connection, mint) {
-            try {
-                const mintInfo = await connection.getParsedAccountInfo(mint);
-                if (mintInfo?.value?.data?.parsed?.info?.decimals) {
-                    layerDecimals = mintInfo.value.data.parsed.info.decimals;
-                    sLog(`Fetched token decimals for LAYER: ${layerDecimals}`);
-                } else {
-                    sLog('⚠️ Could not fetch token decimals. Using default of 9.');
-                }
-            } catch (e) {
-                sLog(`❌ Error fetching token info: ${e.message}`);
-            }
-        }
-
         // Fetch and display balances
         async function fetchBalances(connection, publicKey) {
             try {
@@ -416,7 +400,8 @@
                 const tokenAccountInfo = await connection.getParsedAccountInfo(tokenAccount);
                 if (tokenAccountInfo?.value) {
                     const tokenBalance = tokenAccountInfo.value.data.parsed.info.tokenAmount.uiAmount;
-                    $('layerBalancePill').textContent = `LAYER: ${tokenBalance.toFixed(layerDecimals)}`;
+                    const decimals = tokenAccountInfo.value.data.parsed.info.tokenAmount.decimals;
+                    $('layerBalancePill').textContent = `LAYER: ${tokenBalance.toFixed(decimals)}`;
                 } else {
                     $('layerBalancePill').textContent = `LAYER: 0.000`;
                 }
@@ -442,8 +427,16 @@
             transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
             transaction.feePayer = wallet.publicKey;
 
-            const signedTransaction = await wallet.signTransaction(transaction);
-            const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+            let signature;
+            if (wallet.signAndSendTransaction) {
+                // Use a more modern and direct method if available
+                ({ signature } = await wallet.signAndSendTransaction(transaction));
+            } else {
+                // Fallback for older wallets
+                const signedTransaction = await wallet.signTransaction(transaction);
+                signature = await connection.sendRawTransaction(signedTransaction.serialize());
+            }
+
             sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()}`);
             
             await connection.confirmTransaction({
@@ -453,45 +446,40 @@
             sLog(`✅ SOL transaction confirmed. TX: ${signature}`);
         }
         
-        // LAYER transfer function
+        // LAYER transfer function (Updated)
         async function sendRandomLAYER(connection, wallet, mintStr) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
             
-            // Get associated token addresses
-            const fromTokenAccount = solanaWeb3.PublicKey.findProgramAddressSync(
-                [wallet.publicKey.toBuffer(), window.TOKEN_PROGRAM_ID.toBuffer(), mintPublicKey.toBuffer()],
-                window.ASSOCIATED_TOKEN_PROGRAM_ID
-            )[0];
-            const toTokenAccount = solanaWeb3.PublicKey.findProgramAddressSync(
-                [recipient.toBuffer(), window.TOKEN_PROGRAM_ID.toBuffer(), mintPublicKey.toBuffer()],
-                window.ASSOCIATED_TOKEN_PROGRAM_ID
-            )[0];
+            // Use spl-token functions to handle ATA creation and transfers
+            const fromAta = await splToken.getAssociatedTokenAddress(mintPublicKey, wallet.publicKey);
+            const toAta = await splToken.getAssociatedTokenAddress(mintPublicKey, recipient);
             
             const transaction = new solanaWeb3.Transaction();
             
-            // Check if recipient's token account exists, if not, create instruction
-            const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
+            // Check if recipient's ATA exists, and create if it doesn't
+            const toAccountInfo = await connection.getAccountInfo(toAta);
             if (!toAccountInfo) {
                 transaction.add(
                     splToken.createAssociatedTokenAccountInstruction(
                         wallet.publicKey,
-                        toTokenAccount,
+                        toAta,
                         recipient,
-                        mintPublicKey,
-                        window.TOKEN_PROGRAM_ID,
-                        window.ASSOCIATED_TOKEN_PROGRAM_ID
+                        mintPublicKey
                     )
                 );
             }
             
-            const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, layerDecimals));
+            // Get decimals from the mint account to ensure accurate amount
+            const mintInfo = await connection.getParsedAccountInfo(mintPublicKey);
+            const decimals = mintInfo.value.data.parsed.info.decimals;
+            const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, decimals));
             
-            // Add transfer instruction using the official spl-token library
+            // Add the transfer instruction
             transaction.add(
                 splToken.createTransferInstruction(
-                    fromTokenAccount,
-                    toTokenAccount,
+                    fromAta,
+                    toAta,
                     wallet.publicKey,
                     amount
                 )
@@ -500,10 +488,16 @@
             transaction.feePayer = wallet.publicKey;
             transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
             
-            const signedTransaction = await wallet.signTransaction(transaction);
-            const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-            sLog(`🪙 Sent ${(amount / Math.pow(10, layerDecimals)).toFixed(6)} LAYER → ${recipient.toBase58()}`);
+            let signature;
+            if (wallet.signAndSendTransaction) {
+                ({ signature } = await wallet.signAndSendTransaction(transaction));
+            } else {
+                const signedTx = await wallet.signTransaction(transaction);
+                signature = await connection.sendRawTransaction(signedTx.serialize());
+            }
 
+            sLog(`🪙 Sent ${(amount / Math.pow(10, decimals)).toFixed(6)} LAYER → ${recipient.toBase58()}`);
+            
             await connection.confirmTransaction({
                 signature: signature,
                 commitment: 'confirmed',
@@ -525,7 +519,6 @@
             senderRun = true;
             toggleSenderInputs(true);
             sLog(`Connected wallet: ${walletProvider.publicKey.toBase58()}`);
-            await fetchTokenInfo(connection, new solanaWeb3.PublicKey($("layerMint").value.trim()));
 
             while (senderRun) {
                 await fetchBalances(connection, walletProvider.publicKey);
