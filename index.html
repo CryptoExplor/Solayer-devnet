@@ -78,7 +78,7 @@
                 </div>
                 <div>
                     <label>Amount per airdrop (SOL)</label>
-                    <input id="amtFaucet" type="number" step="0.001" value="0.1" />
+                    <input id="amtFaucet" type="number" step="0.001" value="1" />
                 </div>
             </div>
             <label style="margin-top:8px">Wallet addresses (one per line, base58)</label>
@@ -300,6 +300,11 @@
             const amount = rand(0.0001, 0.005);
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
+            // Fetch the mint account to get the correct decimals
+            const mintInfo = await splToken.getMint(connection, mintPublicKey);
+            const decimals = mintInfo.decimals;
+            const amountInLamports = Math.floor(amount * Math.pow(10, decimals));
+
             // Get or create the associated token accounts for both sender and recipient
             const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
                 connection, fromKeypair, mintPublicKey, fromKeypair.publicKey
@@ -315,9 +320,9 @@
                 fromAta.address,
                 toAta.address,
                 fromKeypair.publicKey,
-                Math.floor(amount * 1e9) // Assume 9 decimals for LAYER, adjust if different
+                amountInLamports
             );
-            sLog(`🪙 Sent ${amount.toFixed(6)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
+            sLog(`🪙 Sent ${amount.toFixed(decimals)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
 
@@ -334,15 +339,35 @@
                 return;
             }
 
+            // Connect and derive keypair outside the loop for efficiency
             const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
             const wallet = await deriveKeypairFromMnemonic(mnemonic, index);
+
+            if (!wallet) {
+                showMessage('Failed to derive wallet from mnemonic. Please check the seed phrase.');
+                return;
+            }
+
             sLog(`Loaded wallet: ${wallet.publicKey.toBase58()} (index ${index})`);
 
             senderRun = true;
             while (senderRun) {
-                senderStats.sent++;
-                updateS();
                 try {
+                    // Check the balance before attempting any transaction
+                    const balance = await connection.getBalance(wallet.publicKey);
+                    const balanceSol = balance / solanaWeb3.LAMPORTS_PER_SOL;
+                    sLog(`Current balance: ${balanceSol.toFixed(4)} SOL`);
+
+                    // A minimal check to ensure we have enough for fees
+                    if (balanceSol < 0.001) {
+                        sLog('⚠️ Insufficient SOL balance for fees. Stopping sender. Please get more SOL from the Faucet tab.');
+                        senderRun = false;
+                        break;
+                    }
+
+                    senderStats.sent++;
+                    updateS();
+
                     // Randomly choose between SOL and LAYER if the mode is 'both'
                     const choice = mode === 'both' ? (Math.random() < 0.5 ? 'sol' : 'layer') : mode;
                     if (choice === 'sol') {
@@ -357,6 +382,7 @@
                     updateS();
                     sLog(`❌ Send error: ${e?.message || e}`);
                 }
+                
                 // Wait for a random delay before the next transaction
                 const delay = Math.floor(rand(1000, 5000));
                 sLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
