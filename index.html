@@ -15,6 +15,7 @@
     <!-- SPL Token -->
     <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.js"></script>
     <script>
+    // This variable is now accessible by all functions in this script block
     const splToken = window.splToken;
     </script>
     <style>
@@ -347,6 +348,7 @@
             return signature;
         }
 
+        // === THIS IS THE FUNCTION THAT WAS MOVED TO FIX THE SCOPING ERROR ===
         // Sends a random amount of LAYER tokens to a new random address
         async function sendRandomLAYER(connection, wallet, mintStr) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
