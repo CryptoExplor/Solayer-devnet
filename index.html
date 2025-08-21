@@ -344,6 +344,11 @@
         }
         
         async function faucetLoop() {
+            // Reset counters at the start of a new loop
+            faucetStats = { total: 0, ok: 0, err: 0 };
+            claimsPerWallet = {};
+            updateFaucetStats();
+
             const rpc = $("rpcFaucet").value.trim();
             const amountSol = parseFloat($("amtFaucet").value || '0.1');
             const lamports = Math.floor(amountSol * 1e9);
