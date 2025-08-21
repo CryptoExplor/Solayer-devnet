@@ -119,7 +119,7 @@
                     <input id="rpcFaucet" value="https://devnet-rpc.solayer.org" />
                 </div>
                 <div>
-                    <label>Amount per Claim (SOL)</label>
+                    <label>Amount per airdrop (SOL)</label>
                     <input id="amtFaucet" type="number" step="0.001" value="1" />
                 </div>
             </div>
@@ -363,7 +363,7 @@
             fLog(`Connecting to RPC → ${rpc}`);
             const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
             
-            let addressQueue = [...addresses];
+            let addressQueue = [...addresses]; // Use a copy to manage the queue
             if (faucetMode === 'per-wallet') {
                 // Shuffle addresses for fair distribution
                 for (let i = addressQueue.length - 1; i > 0; i--) {
@@ -421,6 +421,12 @@
                     fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
                 }
                 
+                // Move the processed address to the end of the queue
+                if (faucetMode !== 'per-wallet' || (faucetMode === 'per-wallet' && claimsPerWallet[addr] < claimLimit)) {
+                    const processedAddr = addressQueue.shift();
+                    addressQueue.push(processedAddr);
+                }
+
                 const delay = Math.floor(rand(1000, 5000));
                 fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
                 if (faucetRun) {
