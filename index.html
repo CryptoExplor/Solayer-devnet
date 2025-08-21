@@ -18,6 +18,9 @@
     <script>
     // This variable is now accessible by all functions in this script block
     const splToken = window.splToken;
+    // Debugging: Log available functions in the splToken object
+    console.log('Available splToken functions:', Object.keys(splToken || {}));
+    console.log('splToken object:', splToken);
     </script>
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
@@ -369,43 +372,53 @@
 
         // ===== LAYER transfer (fixed) =====
         async function sendRandomLAYER(connection, wallet, mintStr) {
+            // Use modern SPL-Token functions which are exposed via the IIFE build
+            const {
+                getOrCreateAssociatedTokenAccount,
+                createTransferInstruction,
+                getMint,
+                TOKEN_PROGRAM_ID
+            } = splToken;
+            
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
-            // Use the older Token class API which is available in the IIFE build
-            const token = new splToken.Token(
+            // Get mint info to determine decimals
+            const mintInfo = await getMint(connection, mintPublicKey);
+            const decimals = mintInfo.decimals;
+
+            // Get or create associated token accounts
+            const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
                 connection,
+                wallet, // payer
                 mintPublicKey,
-                splToken.TOKEN_PROGRAM_ID,
-                wallet.publicKey
+                wallet.publicKey // owner
             );
             
-            // Get or create the associated token accounts for sender and recipient
-            const fromAta = await token.getOrCreateAssociatedAccountInfo(wallet.publicKey);
-            const toAta = await token.getOrCreateAssociatedAccountInfo(recipient);
+            const toTokenAccount = await getOrCreateAssociatedTokenAccount(
+                connection,
+                wallet, // payer
+                mintPublicKey,
+                recipient // owner
+            );
 
-            // Fixed: Correctly get decimals from the mint info
-            const mintInfo = await token.getMintInfo();
-            const decimals = mintInfo.decimals;
             const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, decimals));
 
-            // Create the transfer instruction
-            const transaction = new solanaWeb3.Transaction().add(
-                splToken.Token.createTransferInstruction(
-                    splToken.TOKEN_PROGRAM_ID,
-                    fromAta.address,
-                    toAta.address,
-                    wallet.publicKey,
-                    [],
-                    amount
-                )
+            // Create transfer instruction
+            const transferInstruction = createTransferInstruction(
+                fromTokenAccount.address,
+                toTokenAccount.address,
+                wallet.publicKey,
+                amount,
+                [],
+                TOKEN_PROGRAM_ID
             );
-            
-            // Set fee payer and blockhash
+
+            const transaction = new solanaWeb3.Transaction().add(transferInstruction);
             transaction.feePayer = wallet.publicKey;
             transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
 
-            // Fixed: Added robust transaction signing logic
+            // Sign and send
             let signature;
             try {
                 if (wallet.signAndSendTransaction) {
