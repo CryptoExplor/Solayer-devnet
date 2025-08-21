@@ -58,6 +58,29 @@
             margin: 0;
             font-weight: bold;
         }
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 360px;
+            border: 1px solid #1a2349;
+            border-radius: 12px;
+            background: #091130;
+            padding: 10px;
+        }
+        #chat-log {
+            flex-grow: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-bottom: 10px;
+        }
+        #chat-input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        #chat-input {
+            flex-grow: 1;
+        }
     </style>
 </head>
 <body>
@@ -135,6 +158,7 @@
             </div>
             <pre id="logSender"></pre>
         </section>
+        
     </div>
 
     <!-- Custom Message Box -->
@@ -169,6 +193,7 @@
         const panelF = $("panel-faucet"), panelS = $("panel-sender");
         tabF.onclick = () => { tabF.classList.add('active'); tabS.classList.remove('active'); panelF.classList.remove('hidden'); panelS.classList.add('hidden'); };
         tabS.onclick = () => { tabS.classList.add('active'); tabF.classList.remove('active'); panelS.classList.remove('hidden'); panelF.classList.add('hidden'); };
+
 
         // ===== Faucet Auto‑Claimer Logic =====
         let faucetRun = false;
@@ -262,6 +287,19 @@
 
         // Derives a Solana Keypair from a BIP39 mnemonic phrase
         async function deriveKeypairFromMnemonic(mnemonic, index = 0) {
+            // Wait for the bip39 library to load
+            let attempts = 0;
+            const maxAttempts = 5;
+            while (!window.bip39 && attempts < maxAttempts) {
+                sLog(`bip39 library not ready, waiting... (Attempt ${attempts + 1}/${maxAttempts})`);
+                await sleep(500);
+                attempts++;
+            }
+            
+            if (!window.bip39) {
+                throw new Error("bip39 library failed to load.");
+            }
+            
             try {
                 // Use the standard SLIP-0010 derivation path (m/44'/501'/{index}'/0')
                 if (window.bip39 && window.ed25519HDKey) {
@@ -341,7 +379,15 @@
 
             // Connect and derive keypair outside the loop for efficiency
             const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
-            const wallet = await deriveKeypairFromMnemonic(mnemonic, index);
+            let wallet;
+            try {
+                wallet = await deriveKeypairFromMnemonic(mnemonic, index);
+            } catch (e) {
+                showMessage(`Error deriving wallet: ${e.message}`);
+                sLog(`❌ Error deriving wallet: ${e.message}`);
+                return;
+            }
+            
 
             if (!wallet) {
                 showMessage('Failed to derive wallet from mnemonic. Please check the seed phrase.');
