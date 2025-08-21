@@ -1,372 +1,809 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Solayer Devnet — Faucet Bot & Random Sender</title>
-    <link rel="preconnect" href="https://unpkg.com">
-    <!-- Solana Web3 library -->
-    <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
-    <!-- SPL Token (IIFE build exposes global `splToken`) -->
-    <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
-    <!-- Mnemonic → seed (browser build exposes global `bip39`) -->
-    <script src="https://unpkg.com/bip39@3.1.0/browser/bip39.min.js"></script>
-    <!-- Ed25519 HD derivation (tries to expose `ed25519HDKey`) -->
-    <script src="https://unpkg.com/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js"></script>
+    <title>Solayer Devnet — Faucet / Auto Bot / Swap</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'bg-main': '#0b1020',
+                        'panel-bg': '#111831',
+                        'muted-text': '#6b7a99',
+                        'text-primary': '#e8edf7',
+                        'border-color': '#1f2745',
+                        'button-bg-hover': '#1a2349',
+                        'ok-border': '#1e6f4f',
+                        'ok-text': '#a9f3cd',
+                        'err-border': '#7a2b2b',
+                        'err-text': '#ffb6b6',
+                        'active-tab-from': '#4169e1',
+                        'active-tab-to': '#29c6ff',
+                        'active-tab-text': '#001225',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'Segoe UI', 'Roboto', 'Arial', 'sans-serif'],
+                    },
+                },
+            },
+        };
+    </script>
     <style>
-        :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
-        *{box-sizing:border-box}
-        body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Arial}
-        .wrap{max-width:1100px;margin:20px auto;padding:16px}
-        h1{font-size:20px;margin:0 0 12px}
-        .tabs{display:flex;gap:8px;margin-bottom:12px}
-        .tab{padding:8px 12px;border:1px solid #25315a;background:#0e1633;border-radius:10px;cursor:pointer;transition:background-color 0.3s, border-color 0.3s;}
-        .tab.active{background:linear-gradient(135deg,#4169e1,#29c6ff);color:#001225;border:0}
-        .card{background:linear-gradient(180deg,#121a36,#0e152b);border:1px solid #1f2745;border-radius:14px;padding:14px}
-        textarea,input,button{width:100%;border-radius:10px;border:1px solid #20305e;background:#0c1430;color:var(--text);padding:10px;outline:none;}
-        button{cursor:pointer;font-weight:700;transition:background-color 0.3s;}
-        .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        .muted{color:#9fb0d6}
-        .pill{display:inline-block;margin-right:8px;margin-top:8px;padding:6px 10px;border-radius:999px;border:1px solid #29335a;background:#0d1533}
-        .ok{border-color:#1e6f4f;color:#a9f3cd}
-        .err{border-color:#7a2b2b;color:#ffb6b6}
-        pre{height:360px;overflow:auto;background:#091130;border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap}
-        .hidden{display:none}
-        /* Custom Message Box Styles */
-        #message-box {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            max-width: 300px;
-            padding: 15px;
-            background: #25315a;
-            border: 1px solid #3c4c7b;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            z-index: 1000;
-            display: none; /* Initially hidden */
+        body {
+            background-color: theme('colors.bg-main');
+            color: theme('colors.text-primary');
+            font-family: theme('fontFamily.sans');
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
-        #message-box.show {
-            display: block;
-            animation: fadeIn 0.3s ease-out;
+        .container {
+            max-width: 1100px;
+            margin: 20px auto;
+            padding: 16px;
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
+        .card {
+            background: linear-gradient(180deg, theme('colors.panel-bg'), #0e152b);
+            border: 1px solid theme('colors.border-color');
+            border-radius: 14px;
+            padding: 14px;
         }
-        #message-box p {
-            margin: 0;
-            font-weight: bold;
+        .tabs button.active {
+            background: linear-gradient(135deg, theme('colors.active-tab-from'), theme('colors.active-tab-to'));
+            color: theme('colors.active-tab-text');
+            border-color: transparent;
+        }
+        input, textarea, select {
+            background-color: #0c1430;
+            border-color: #20305e;
+            color: theme('colors.text-primary');
+            border-radius: 10px;
+            padding: 10px;
+            width: 100%;
+        }
+        button {
+            border-radius: 10px;
+            padding: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            border: 1px solid theme('colors.border-color');
+            background-color: #0c1430;
+            color: theme('colors.text-primary');
+        }
+        button:hover {
+            background-color: theme('colors.button-bg-hover');
+        }
+        .pill {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid #29335a;
+            background: #0d1533;
+            margin-right: 8px;
+            margin-top: 8px;
+        }
+        .pill.ok { border-color: theme('colors.ok-border'); color: theme('colors.ok-text'); }
+        .pill.err { border-color: theme('colors.err-border'); color: theme('colors.err-text'); }
+        pre {
+            height: 280px;
+            overflow: auto;
+            background: #091130;
+            border: 1px solid #1a2349;
+            border-radius: 12px;
+            padding: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
         }
     </style>
 </head>
-<body>
-    <div class="wrap">
-        <h1>Solayer Devnet — Faucet Bot & Random Sender</h1>
-        <div class="tabs">
-            <button class="tab active" id="tab-faucet">Faucet Auto‑Claimer</button>
-            <button class="tab" id="tab-sender">Auto Sender (SOL & LAYER)</button>
+
+<body class="bg-bg-main text-text-primary font-sans">
+    <!-- Libraries -->
+    <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/bip39@3.1.0/browser/bip39.min.js"></script>
+    <script src="https://unpkg.com/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js"></script>
+
+    <div class="container mx-auto p-4">
+        <h1 class="text-2xl font-bold mb-4">Solayer Devnet — Faucet / Auto Bot / Swap</h1>
+
+        <!-- Tabs -->
+        <div class="tabs flex gap-2 mb-4">
+            <button id="tab-faucet" class="tab flex-1 py-2 px-4 border rounded-xl bg-panel-bg border-border-color cursor-pointer active">
+                Faucet (addresses only)
+            </button>
+            <button id="tab-bot" class="tab flex-1 py-2 px-4 border rounded-xl bg-panel-bg border-border-color cursor-pointer">
+                Auto Bot (seed required)
+            </button>
+            <button id="tab-swap" class="tab flex-1 py-2 px-4 border rounded-xl bg-panel-bg border-border-color cursor-pointer">
+                Manual Swap
+            </button>
         </div>
 
-        <!-- Faucet Tab -->
+        <!-- Faucet Panel -->
         <section id="panel-faucet" class="card">
-            <p class="muted">Runs indefinitely with random 1–5s delay across all addresses.</p>
-            <div class="row">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label>RPC URL</label>
-                    <input id="rpcFaucet" value="https://devnet-rpc.solayer.org" />
+                    <label class="text-sm text-muted-text">RPC URL</label>
+                    <input id="rpcF" value="https://devnet-rpc.solayer.org" class="mt-1 block w-full" />
                 </div>
                 <div>
-                    <label>Amount per airdrop (SOL)</label>
-                    <input id="amtFaucet" type="number" step="0.001" value="0.1" />
+                    <label class="text-sm text-muted-text">Airdrop per request (SOL)</label>
+                    <input id="amtF" type="number" step="0.001" value="0.1" class="mt-1 block w-full" />
                 </div>
             </div>
-            <label style="margin-top:8px">Wallet addresses (one per line, base58)</label>
-            <textarea id="addrsFaucet" rows="6" placeholder="9x3H...\nC4nDy...\n..."></textarea>
-            <div class="row" style="margin-top:8px">
-                <button id="startFaucet">▶ Start Faucet Loop</button>
-                <button id="stopFaucet">⏹ Stop</button>
+
+            <label class="text-sm text-muted-text mt-4 block">Target wallet addresses (one per line, base58)</label>
+            <textarea id="addrsF" rows="6" placeholder="Enter destination addresses..." class="mt-1 block w-full"></textarea>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <button id="startFaucet" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-xl transition-colors duration-200">
+                    ▶ Start Faucet Loop
+                </button>
+                <button id="stopFaucet" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl transition-colors duration-200">
+                    ⏹ Stop
+                </button>
             </div>
-            <div>
-                <span class="pill" id="faucetTotal">Total: 0</span>
-                <span class="pill ok" id="faucetOk">Success: 0</span>
-                <span class="pill err" id="faucetErr">Errors: 0</span>
+
+            <div class="mt-4">
+                <span class="pill" id="fTotal">Total: 0</span>
+                <span class="pill ok" id="fOk">Success: 0</span>
+                <span class="pill err" id="fErr">Err: 0</span>
             </div>
-            <pre id="logFaucet"></pre>
+
+            <pre id="logF" class="mt-4"></pre>
         </section>
 
-        <!-- Sender Tab -->
-        <section id="panel-sender" class="card hidden">
-            <p class="muted">Sends to a <b>random new address</b> every 1–5s. Ranges: SOL 0.001–0.05 · LAYER 0.0001–0.005</p>
-            <div class="row">
+        <!-- Auto Bot Panel -->
+        <section id="panel-bot" class="card hidden">
+            <div class="text-sm text-muted-text mb-4">Auto bot uses a seed (mnemonic). It can Send only, Swap only, or Send+Swap mix. Uses derivation index to pick wallet.</div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label>RPC URL</label>
-                    <input id="rpcSender" value="https://devnet-rpc.solayer.org" />
+                    <label class="text-sm text-muted-text">RPC URL</label>
+                    <input id="rpcB" value="https://devnet-rpc.solayer.org" class="mt-1 block w-full" />
                 </div>
                 <div>
-                    <label>LAYER mint</label>
-                    <input id="layerMint" value="LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc" />
+                    <label class="text-sm text-muted-text">LAYER mint</label>
+                    <input id="layerMint" value="LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc" class="mt-1 block w-full" />
                 </div>
             </div>
-            <label style="margin-top:8px">Seed phrase (mnemonic) — Devnet only ⚠️</label>
-            <textarea id="mnemonic" rows="3" placeholder="abandon abandon abandon ... (24 words)"></textarea>
-            <div class="row" style="margin-top:8px">
+
+            <label class="text-sm text-muted-text mt-4 block">Seed phrase (mnemonic) — devnet only (first line used)</label>
+            <textarea id="mnemonicB" rows="3" placeholder="abandon abandon ... (12/24 words)" class="mt-1 block w-full"></textarea>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
-                    <label>Derivation index</label>
-                    <input id="derivIndex" type="number" min="0" value="0" />
+                    <label class="text-sm text-muted-text">Derivation index</label>
+                    <input id="derivIdx" type="number" min="0" value="0" class="mt-1 block w-full" />
                 </div>
                 <div>
-                    <label>Mode</label>
-                    <select id="modeSender">
-                        <option value="both" selected>SOL or LAYER (random)</option>
-                        <option value="sol">SOL only</option>
-                        <option value="layer">LAYER only</option>
+                    <label class="text-sm text-muted-text">Mode</label>
+                    <select id="botMode" class="mt-1 block w-full">
+                        <option value="send">Sending only</option>
+                        <option value="swap">Swap only</option>
+                        <option value="mix" selected>Sending + Swap (random)</option>
                     </select>
                 </div>
             </div>
-            <div class="row" style="margin-top:8px">
-                <button id="startSender">▶ Start Auto Sender</button>
-                <button id="stopSender">⏹ Stop</button>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label class="text-sm text-muted-text">SOL send range (SOL)</label>
+                    <input id="solMinMax" value="0.001,0.05" class="mt-1 block w-full" />
+                </div>
+                <div>
+                    <label class="text-sm text-muted-text">LAYER send range (LAYER)</label>
+                    <input id="layerMinMax" value="0.0001,0.005" class="mt-1 block w-full" />
+                </div>
             </div>
-            <div>
-                <span class="pill" id="senderSent">Sent: 0</span>
-                <span class="pill ok" id="senderOk">OK: 0</span>
-                <span class="pill err" id="senderErr">Err: 0</span>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label class="text-sm text-muted-text">Swap SOL amount range (SOL)</label>
+                    <input id="swapSolRange" value="0.001,0.02" class="mt-1 block w-full" />
+                </div>
+                <div>
+                    <label class="text-sm text-muted-text">Swap LAYER amount range (LAYER)</label>
+                    <input id="swapLayerRange" value="0.0001,0.002" class="mt-1 block w-full" />
+                </div>
             </div>
-            <pre id="logSender"></pre>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <button id="startBot" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-xl transition-colors duration-200">
+                    ▶ Start Bot
+                </button>
+                <button id="stopBot" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl transition-colors duration-200">
+                    ⏹ Stop
+                </button>
+            </div>
+
+            <div class="mt-4">
+                <span class="pill" id="bSent">Actions: 0</span>
+                <span class="pill ok" id="bOk">OK: 0</span>
+                <span class="pill err" id="bErr">Err: 0</span>
+            </div>
+
+            <pre id="logB" class="mt-4"></pre>
+        </section>
+
+        <!-- Manual Swap Panel -->
+        <section id="panel-swap" class="card hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm text-muted-text">RPC URL</label>
+                    <input id="rpcS" value="https://devnet-rpc.solayer.org" class="mt-1 block w-full" />
+                </div>
+                <div>
+                    <label class="text-sm text-muted-text">LAYER mint</label>
+                    <input id="layerMintS" value="LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc" class="mt-1 block w-full" />
+                </div>
+            </div>
+
+            <label class="text-sm text-muted-text mt-4 block">Seed phrase (mnemonic) for signing</label>
+            <textarea id="mnemonicS" rows="2" placeholder="mnemonic for manual swap" class="mt-1 block w-full"></textarea>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label class="text-sm text-muted-text">Direction</label>
+                    <select id="swapDir" class="mt-1 block w-full">
+                        <option value="sol2layer">SOL → LAYER</option>
+                        <option value="layer2sol">LAYER → SOL</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm text-muted-text">Amount</label>
+                    <input id="swapAmountS" placeholder="0.01" class="mt-1 block w-full" />
+                </div>
+            </div>
+
+            <div class="flex gap-2 mt-4">
+                <button id="btnQuoteNow" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl transition-colors duration-200">
+                    Get Quote (Jupiter)
+                </button>
+                <button id="btnSwapNow" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl transition-colors duration-200">
+                    Swap Now
+                </button>
+            </div>
+
+            <div class="text-xs text-muted-text mt-4">
+                Program ID used for Solayer template fallback: <code id="prog">rp7km3qAmYb8ciKKS23v5nmyYU9dFTc5RTAyx7zQSAz</code>
+            </div>
+            <pre id="logS" class="mt-4"></pre>
         </section>
     </div>
 
-    <!-- Custom Message Box -->
-    <div id="message-box" class="card">
-        <p id="message-text"></p>
+    <!-- Message Box (Toast) -->
+    <div id="message-box" class="fixed bottom-4 right-4 max-w-sm p-4 rounded-lg shadow-xl hidden transition-all duration-300 ease-in-out">
+        <p id="msg" class="text-sm text-white"></p>
     </div>
 
     <script>
-        // Helper function to get an element by ID
-        const $ = (id) => document.getElementById(id);
-
-        // Helper function for a non-blocking delay
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-        // Helper function for a random number within a range
-        const rand = (min, max) => Math.random() * (max - min) + min;
-
-        // Custom message box to replace alert()
-        function showMessage(msg) {
-            const msgBox = $('message-box');
-            const msgText = $('message-text');
-            msgText.textContent = msg;
-            msgBox.classList.add('show');
-            // Hide the message after a few seconds
-            setTimeout(() => {
-                msgBox.classList.remove('show');
-            }, 4000);
-        }
-
-        // Tab functionality
-        const tabF = $("tab-faucet"), tabS = $("tab-sender");
-        const panelF = $("panel-faucet"), panelS = $("panel-sender");
-        tabF.onclick = () => { tabF.classList.add('active'); tabS.classList.remove('active'); panelF.classList.remove('hidden'); panelS.classList.add('hidden'); };
-        tabS.onclick = () => { tabS.classList.add('active'); tabF.classList.remove('active'); panelS.classList.remove('hidden'); panelF.classList.add('hidden'); };
-
-        // ===== Faucet Auto‑Claimer Logic =====
-        let faucetRun = false;
-        let faucetStats = { total: 0, ok: 0, err: 0 };
-
-        // Logs messages to the Faucet section
-        function fLog(msg) {
-            const ts = new Date().toLocaleTimeString();
-            const logElement = $("logFaucet");
-            logElement.textContent += `[${ts}] ${msg}\n`;
-            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
-        }
-
-        // Updates the Faucet stats display
-        function updateF() {
-            $("faucetTotal").textContent = `Total: ${faucetStats.total}`;
-            $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
-            $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
-        }
-
-        // The main faucet loop
-        async function faucetLoop() {
-            const rpc = $("rpcFaucet").value.trim();
-            const amountSol = parseFloat($("amtFaucet").value || '0.1');
-            const lamports = Math.floor(amountSol * 1e9);
-            const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
-
-            if (!addresses.length) {
-                showMessage('Please enter at least one address for the Faucet.');
+        // Ensure all required libraries are loaded before running the script
+        window.onload = function() {
+            if (typeof solanaWeb3 === 'undefined' || typeof splToken === 'undefined' || typeof bip39 === 'undefined' || typeof ed25519HDKey === 'undefined') {
+                showMsg('Error: Required libraries not loaded. Please try refreshing the page.');
                 return;
             }
+            main();
+        };
 
-            faucetRun = true;
-            fLog(`Connecting to RPC → ${rpc}`);
-            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+        // Main script logic
+        function main() {
+            /* ============================
+               Utilities & UI helpers
+               ============================ */
+            const $ = id => document.getElementById(id);
+            const sleep = ms => new Promise(r => setTimeout(r, ms));
+            const randFloat = (min, max) => Math.random() * (max - min) + min;
+            const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+            
+            let msgBoxTimeout;
+            function showMsg(text, type = 'info') {
+                clearTimeout(msgBoxTimeout);
+                const box = $('message-box'), p = $('msg');
+                p.textContent = text;
+                box.classList.remove('hidden', 'bg-red-500', 'bg-green-500', 'bg-blue-500');
+                if (type === 'error') {
+                    box.classList.add('bg-red-500');
+                } else if (type === 'success') {
+                    box.classList.add('bg-green-500');
+                } else {
+                    box.classList.add('bg-blue-500');
+                }
+                msgBoxTimeout = setTimeout(() => box.classList.add('hidden'), 5000);
+            }
 
-            while (faucetRun) {
-                for (const addr of addresses) {
-                    // Check if the loop has been stopped before each iteration
-                    if (!faucetRun) break;
-                    
-                    try {
-                        faucetStats.total++;
-                        updateF();
-                        const pk = new solanaWeb3.PublicKey(addr);
-                        fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
-                        const sig = await connection.requestAirdrop(pk, lamports);
-                        fLog(`Airdrop TX → ${sig}`);
+            function base64ToUint8Array(b64) {
+                const bin = atob(b64);
+                const arr = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                return arr;
+            }
 
-                        // Wait for transaction confirmation
-                        fLog(`Waiting for confirmation...`);
-                        await connection.confirmTransaction(sig, 'confirmed');
-                        faucetStats.ok++;
-                        updateF();
-                        fLog(`✅ Airdrop confirmed!`);
-                    } catch (e) {
-                        faucetStats.err++;
-                        updateF();
-                        fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
+            // Tabs
+            const tabElements = {
+                faucet: { tab: $('tab-faucet'), panel: $('panel-faucet') },
+                bot: { tab: $('tab-bot'), panel: $('panel-bot') },
+                swap: { tab: $('tab-swap'), panel: $('panel-swap') }
+            };
+
+            function activateTab(tabName) {
+                for (const name in tabElements) {
+                    const { tab, panel } = tabElements[name];
+                    if (name === tabName) {
+                        tab.classList.add('active');
+                        panel.classList.remove('hidden');
+                    } else {
+                        tab.classList.remove('active');
+                        panel.classList.add('hidden');
                     }
-                    // Wait for a random delay before the next airdrop
-                    const delay = Math.floor(rand(1000, 5000));
-                    fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
+                }
+            }
+
+            $('tab-faucet').onclick = () => activateTab('faucet');
+            $('tab-bot').onclick = () => activateTab('bot');
+            $('tab-swap').onclick = () => activateTab('swap');
+
+            /* ============================
+               Faucet (addresses only)
+               ============================ */
+            let faucetRunning = false;
+            let faucetStats = { total: 0, ok: 0, err: 0 };
+
+            function logF(msg) {
+                const t = new Date().toLocaleTimeString();
+                $('logF').textContent += `[${t}] ${msg}\n`;
+                $('logF').scrollTop = $('logF').scrollHeight;
+            }
+
+            function updateFStats() {
+                $('fTotal').textContent = `Total: ${faucetStats.total}`;
+                $('fOk').textContent = `Success: ${faucetStats.ok}`;
+                $('fErr').textContent = `Err: ${faucetStats.err}`;
+            }
+
+            async function faucetLoop() {
+                const rpc = $('rpcF').value.trim();
+                const amount = parseFloat($('amtF').value || '0.1');
+                const lamports = Math.floor(amount * 1e9);
+                const addrs = $('addrsF').value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+
+                if (!addrs.length) {
+                    showMsg('Enter at least one address.', 'error');
+                    return;
+                }
+
+                faucetRunning = true;
+                $('startFaucet').disabled = true;
+                $('stopFaucet').disabled = false;
+                logF(`Connecting to ${rpc}`);
+
+                try {
+                    const conn = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+                    while (faucetRunning) {
+                        for (const a of addrs) {
+                            if (!faucetRunning) break;
+                            try {
+                                faucetStats.total++;
+                                updateFStats();
+                                const pk = new solanaWeb3.PublicKey(a);
+                                logF(`Requesting airdrop ${amount} SOL -> ${a}`);
+                                const sig = await conn.requestAirdrop(pk, lamports);
+                                logF(`Airdrop tx: ${sig} — awaiting confirmation`);
+                                await conn.confirmTransaction(sig, 'confirmed');
+                                faucetStats.ok++;
+                                updateFStats();
+                                logF(`✅ Confirmed ${sig}`);
+                            } catch (e) {
+                                faucetStats.err++;
+                                updateFStats();
+                                logF(`❌ Error for ${a}: ${e?.message || e}`);
+                            }
+                            const delay = randInt(1000, 5000);
+                            logF(`⏳ Waiting ${(delay / 1000).toFixed(2)}s`);
+                            await sleep(delay);
+                        }
+                    }
+                } catch (e) {
+                    logF(`Critical error: ${e?.message || e}`);
+                    showMsg('Critical error occurred, stopping faucet loop.', 'error');
+                } finally {
+                    faucetRunning = false;
+                    $('startFaucet').disabled = false;
+                    $('stopFaucet').disabled = true;
+                    logF('� Faucet stopped.');
+                }
+            }
+
+            $('startFaucet').onclick = () => { if (!faucetRunning) faucetLoop(); };
+            $('stopFaucet').onclick = () => { faucetRunning = false; };
+
+            /* ============================
+               Auto Bot (seed required)
+               ============================ */
+            let botRunning = false;
+            let botStats = { actions: 0, ok: 0, err: 0 };
+
+            function logB(msg) {
+                const t = new Date().toLocaleTimeString();
+                $('logB').textContent += `[${t}] ${msg}\n`;
+                $('logB').scrollTop = $('logB').scrollHeight;
+            }
+
+            function updateB() {
+                $('bSent').textContent = `Actions: ${botStats.actions}`;
+                $('bOk').textContent = `OK: ${botStats.ok}`;
+                $('bErr').textContent = `Err: ${botStats.err}`;
+            }
+
+            async function deriveKeypairFromMnemonic(mnemonic, index = 0) {
+                try {
+                    if (window.bip39 && window.ed25519HDKey) {
+                        const seed = await window.bip39.mnemonicToSeed(mnemonic);
+                        const path = `m/44'/501'/${index}'/0'`;
+                        const { key } = window.ed25519HDKey.derivePath(path, seed.toString('hex'));
+                        return solanaWeb3.Keypair.fromSeed(new Uint8Array(key));
+                    }
+                } catch (e) {
+                    logB('Derivation error, falling back to non-HD keypair: ' + (e?.message || e));
+                }
+                const seed = await window.bip39.mnemonicToSeed(mnemonic);
+                return solanaWeb3.Keypair.fromSeed(new Uint8Array(seed).slice(0, 32));
+            }
+
+            // Enhanced fetch function with exponential backoff
+            async function fetchWithRetry(url, options, retries = 3) {
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const response = await fetch(url, options);
+                        if (!response.ok) {
+                            // Retry on server errors or rate limiting
+                            if (response.status >= 500 || response.status === 429) {
+                                throw new Error(`Server error: ${response.status}`);
+                            } else {
+                                throw new Error(`Failed to fetch: ${response.status}`);
+                            }
+                        }
+                        return response;
+                    } catch (error) {
+                        if (i < retries - 1) {
+                            const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                            logB(`Fetch failed. Retrying in ${delay / 1000}s...`);
+                            await sleep(delay);
+                        } else {
+                            throw error;
+                        }
+                    }
+                }
+            }
+
+            async function sendRandomSOL(conn, kp, min, max) {
+                const to = solanaWeb3.Keypair.generate().publicKey;
+                const amt = randFloat(min, max);
+                const tx = new solanaWeb3.Transaction().add(
+                    solanaWeb3.SystemProgram.transfer({ fromPubkey: kp.publicKey, toPubkey: to, lamports: Math.floor(amt * 1e9) })
+                );
+                const sig = await solanaWeb3.sendAndConfirmTransaction(conn, tx, [kp]);
+                logB(`📤 Sent ${amt.toFixed(6)} SOL → ${to.toBase58()} | ${sig}`);
+                return sig;
+            }
+
+            async function sendRandomLAYER(conn, kp, mintStr, min, max) {
+                const to = solanaWeb3.Keypair.generate().publicKey;
+                const amt = randFloat(min, max);
+                const mint = new solanaWeb3.PublicKey(mintStr);
+                const fromAta = await splToken.getOrCreateAssociatedTokenAccount(conn, kp, mint, kp.publicKey);
+                const toAta = await splToken.getOrCreateAssociatedTokenAccount(conn, kp, mint, to);
+                const sig = await splToken.transfer(conn, kp, fromAta.address, toAta.address, kp.publicKey, Math.floor(amt * 1e9));
+                logB(`🪙 Sent ${amt.toFixed(6)} LAYER → ${to.toBase58()} | ${sig}`);
+                return sig;
+            }
+
+            /* ---------------------------
+               Swap helpers (Jupiter + template fallback)
+               --------------------------- */
+            const JUP_QUOTE = 'https://quote-api.jup.ag/v6/quote';
+            const JUP_SWAP = 'https://quote-api.jup.ag/v6/swap';
+            const SOLAYER_PROGRAM_PUB = new solanaWeb3.PublicKey('rp7km3qAmYb8ciKKS23v5nmyYU9dFTc5RTAyx7zQSAz');
+
+            async function tryJupiterQuote(inputMint, outputMint, amount) {
+                try {
+                    const url = new URL(JUP_QUOTE);
+                    url.searchParams.set('inputMint', inputMint);
+                    url.searchParams.set('outputMint', outputMint);
+                    url.searchParams.set('amount', amount);
+                    url.searchParams.set('slippageBps', '50');
+                    const r = await fetchWithRetry(url.toString());
+                    return await r.json();
+                } catch (e) {
+                    logB(`Jupiter quote failed: ${e.message}`);
+                    return null;
+                }
+            }
+
+            async function tryJupiterSwap(inputMint, outputMint, amount, userPublicKey) {
+                try {
+                    const body = {
+                        quoteRequest: { inputMint, outputMint, amount, slippageBps: 50 },
+                        userPublicKey,
+                        wrapAndUnwrapSol: true,
+                        asLegacyTransaction: false
+                    };
+                    const r = await fetchWithRetry(JUP_SWAP, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    return await r.json();
+                } catch (e) {
+                    logB(`Jupiter swap failed: ${e.message}`);
+                    return null;
+                }
+            }
+
+            async function fetchRecentSwapTemplate(conn) {
+                try {
+                    const sigs = await conn.getSignaturesForAddress(SOLAYER_PROGRAM_PUB, { limit: 12 });
+                    for (const s of sigs) {
+                        const tx = await conn.getTransaction(s.signature, { commitment: 'confirmed' });
+                        if (!tx || !tx.transaction) continue;
+                        const message = tx.transaction.message;
+                        for (const inst of message.instructions) {
+                            const pid = message.accountKeys[inst.programIdIndex].toBase58();
+                            if (pid === SOLAYER_PROGRAM_PUB.toBase58()) {
+                                return { message, instruction: inst, signature: s.signature };
+                            }
+                        }
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            async function replayTemplateSwap(conn, payer, template, patchedData = null) {
+                try {
+                    const msg = template.message;
+                    const inst = template.instruction;
+                    const programId = msg.accountKeys[inst.programIdIndex];
+                    const keys = inst.accounts.map(idx => ({ pubkey: msg.accountKeys[idx], isSigner: false, isWritable: true }));
+                    const dataRaw = inst.data;
+                    let dataBytes;
+
+                    try { dataBytes = base64ToUint8Array(dataRaw); } catch (_) {
+                        try { dataBytes = new Uint8Array(dataRaw); } catch (_) { dataBytes = null; }
+                    }
+
+                    if (!dataBytes && !patchedData) throw new Error('unable to decode template data');
+                    const data = patchedData || dataBytes;
+                    const instruction = new solanaWeb3.TransactionInstruction({ keys, programId, data });
+                    const tx = new solanaWeb3.Transaction().add(instruction);
+                    tx.feePayer = payer.publicKey;
+                    tx.recentBlockhash = (await conn.getRecentBlockhash()).blockhash;
+                    tx.sign(payer);
+                    const raw = tx.serialize();
+                    const sig = await conn.sendRawTransaction(raw);
+                    await conn.confirmTransaction(sig, 'confirmed');
+                    return sig;
+                } catch (e) {
+                    throw e;
+                }
+            }
+
+            function patchAmountInBytes(originalBytes, newLamportsBigInt) {
+                const buf = new Uint8Array(originalBytes);
+                const dv = new DataView(buf.buffer);
+                for (let i = 0; i + 8 <= buf.length; i++) {
+                    try {
+                        const val = dv.getBigUint64(i, true);
+                        if (val > 0n && val < 100000000000n) {
+                            dv.setBigUint64(i, newLamportsBigInt, true);
+                            return buf;
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+                return null;
+            }
+
+            async function autoDetectAndSwap({ conn, wallet, fromMint, toMint, uiAmount }) {
+                // Try Jupiter first
+                const baseAmt = Math.floor(uiAmount * 1e9).toString();
+                const quote = await tryJupiterQuote(fromMint, toMint, baseAmt);
+
+                if (quote && quote.data && quote.data.length > 0) {
+                    logB('Found Jupiter quote, attempting swap...');
+                    const swapPayload = await tryJupiterSwap(fromMint, toMint, baseAmt, wallet.publicKey.toBase58());
+                    const b64 = swapPayload?.swapTransaction || swapPayload?.swapTxn;
+                    if (b64) {
+                        const raw = base64ToUint8Array(b64);
+                        const tx = solanaWeb3.Transaction.from(raw);
+                        tx.partialSign(wallet);
+                        const rawSigned = tx.serialize();
+                        const sig = await conn.sendRawTransaction(rawSigned);
+                        await conn.confirmTransaction(sig, 'confirmed');
+                        return { method: 'jupiter', sig };
+                    }
+                }
+
+                // Fallback: find a template and patch bytes
+                logB('Jupiter quote failed, falling back to template patching...');
+                const template = await fetchRecentSwapTemplate(conn);
+                if (!template) return { error: 'no-template found' };
+
+                let dataBytes;
+                try { dataBytes = base64ToUint8Array(template.instruction.data); } catch (_) {
+                    try { dataBytes = new Uint8Array(template.instruction.data); } catch (_) { dataBytes = null; }
+                }
+
+                if (!dataBytes) return { error: 'cannot decode template' };
+                const newLamports = BigInt(Math.floor(uiAmount * 1e9));
+                const patched = patchAmountInBytes(dataBytes, newLamports);
+                if (!patched) return { error: 'no candidate offset for patching' };
+
+                const sig = await replayTemplateSwap(conn, wallet, template, patched);
+                return { method: 'template-patch', sig };
+            }
+
+            function parseRange(s, fallbackMin, fallbackMax) {
+                try {
+                    const parts = s.split(',').map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+                    if (parts.length === 2) return [parts[0], parts[1]];
+                    return [fallbackMin, fallbackMax];
+                } catch (e) {
+                    return [fallbackMin, fallbackMax];
+                }
+            }
+
+            async function botLoop() {
+                const rpc = $('rpcB').value.trim();
+                const layerMint = $('layerMint').value.trim();
+                const mnemonic = $('mnemonicB').value.trim();
+                const index = parseInt($('derivIdx').value || '0');
+                const mode = $('botMode').value;
+                const [solMin, solMax] = parseRange($('solMinMax').value, 0.001, 0.05);
+                const [layerMin, layerMax] = parseRange($('layerMinMax').value, 0.0001, 0.005);
+                const [swapSolMin, swapSolMax] = parseRange($('swapSolRange').value, 0.001, 0.02);
+                const [swapLayerMin, swapLayerMax] = parseRange($('swapLayerRange').value, 0.0001, 0.002);
+
+                if (!mnemonic) {
+                    showMsg('Enter mnemonic for Auto Bot.', 'error');
+                    return;
+                }
+                const conn = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+                const wallet = await deriveKeypairFromMnemonic(mnemonic.split(/\n+/)[0], index);
+                logB(`Wallet: ${wallet.publicKey.toBase58()} (index ${index})`);
+
+                botRunning = true;
+                $('startBot').disabled = true;
+                $('stopBot').disabled = false;
+
+                while (botRunning) {
+                    botStats.actions++;
+                    updateB();
+                    try {
+                        let action;
+                        if (mode === 'send') action = 'send';
+                        else if (mode === 'swap') action = 'swap';
+                        else action = Math.random() < 0.6 ? 'send' : 'swap'; // Mix mode
+
+                        if (action === 'send') {
+                            if (Math.random() < 0.5) {
+                                await sendRandomSOL(conn, wallet, solMin, solMax);
+                            } else {
+                                await sendRandomLAYER(conn, wallet, layerMint, layerMin, layerMax);
+                            }
+                            botStats.ok++;
+                        } else { // swap
+                            const dir = Math.random() < 0.5 ? 'sol2layer' : 'layer2sol';
+                            if (dir === 'sol2layer') {
+                                const amt = randFloat(swapSolMin, swapSolMax);
+                                logB(`Attempting swap SOL→LAYER ${amt} (auto)`);
+                                const res = await autoDetectAndSwap({ conn, wallet, fromMint: 'So11111111111111111111111111111111111111112', toMint: layerMint, uiAmount: amt });
+                                if (res.sig || res.method) {
+                                    botStats.ok++;
+                                    logB(`Swap successful: ${res.method} | ${res.sig}`);
+                                } else {
+                                    botStats.err++;
+                                    logB(`Swap failed: ${res.error || 'unknown'}`);
+                                }
+                            } else {
+                                const amt = randFloat(swapLayerMin, swapLayerMax);
+                                logB(`Attempting swap LAYER→SOL ${amt} (auto)`);
+                                const res = await autoDetectAndSwap({ conn, wallet, fromMint: layerMint, toMint: 'So11111111111111111111111111111111111111112', uiAmount: amt });
+                                if (res.sig || res.method) {
+                                    botStats.ok++;
+                                    logB(`Swap successful: ${res.method} | ${res.sig}`);
+                                } else {
+                                    botStats.err++;
+                                    logB(`Swap failed: ${res.error || 'unknown'}`);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        botStats.err++;
+                        logB('Action error: ' + (e?.message || e));
+                    }
+                    updateB();
+                    const delay = randInt(1000, 5000);
+                    logB(`⏳ Waiting ${(delay / 1000).toFixed(2)}s`);
                     await sleep(delay);
                 }
-            }
-            fLog('🛑 Faucet loop stopped.');
-        }
-
-        $("startFaucet").onclick = () => { if (!faucetRun) faucetLoop(); };
-        $("stopFaucet").onclick = () => { faucetRun = false; };
-
-        // ===== Auto Sender (SOL & LAYER) Logic =====
-        let senderRun = false;
-        let senderStats = { sent: 0, ok: 0, err: 0 };
-
-        // Logs messages to the Sender section
-        function sLog(msg) {
-            const ts = new Date().toLocaleTimeString();
-            const logElement = $("logSender");
-            logElement.textContent += `[${ts}] ${msg}\n`;
-            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
-        }
-
-        // Updates the Sender stats display
-        function updateS() {
-            $("senderSent").textContent = `Sent: ${senderStats.sent}`;
-            $("senderOk").textContent = `OK: ${senderStats.ok}`;
-            $("senderErr").textContent = `Err: ${senderStats.err}`;
-        }
-
-        // Derives a Solana Keypair from a BIP39 mnemonic phrase
-        async function deriveKeypairFromMnemonic(mnemonic, index = 0) {
-            try {
-                // Use the standard SLIP-0010 derivation path (m/44'/501'/{index}'/0')
-                if (window.bip39 && window.ed25519HDKey) {
-                    const seed = await window.bip39.mnemonicToSeed(mnemonic);
-                    const path = `m/44'/501'/${index}'/0'`;
-                    const { key } = window.ed25519HDKey.derivePath(path, seed.toString('hex'));
-                    return solanaWeb3.Keypair.fromSeed(new Uint8Array(key));
-                }
-            } catch (e) {
-                sLog(`Derivation library error: ${e?.message || e}. Falling back to a non-HD safe method.`);
-            }
-            // Fallback for environments where HD derivation is not supported
-            const seed = await window.bip39.mnemonicToSeed(mnemonic);
-            return solanaWeb3.Keypair.fromSeed(new Uint8Array(seed).slice(0, 32));
-        }
-
-        // Sends a random amount of SOL to a new random address
-        async function sendRandomSOL(connection, fromKeypair) {
-            const recipient = solanaWeb3.Keypair.generate().publicKey;
-            const amount = rand(0.001, 0.05); // Random amount between 0.001 and 0.05 SOL
-            const transaction = new solanaWeb3.Transaction().add(
-                solanaWeb3.SystemProgram.transfer({
-                    fromPubkey: fromKeypair.publicKey,
-                    toPubkey: recipient,
-                    lamports: Math.floor(amount * 1e9) // Convert SOL to lamports
-                })
-            );
-            const signature = await solanaWeb3.sendAndConfirmTransaction(connection, transaction, [fromKeypair]);
-            sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
-            return signature;
-        }
-
-        // Sends a random amount of LAYER tokens to a new random address
-        async function sendRandomLAYER(connection, fromKeypair, mintStr) {
-            const recipient = solanaWeb3.Keypair.generate().publicKey;
-            const amount = rand(0.0001, 0.005);
-            const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
-
-            // Get or create the associated token accounts for both sender and recipient
-            const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection, fromKeypair, mintPublicKey, fromKeypair.publicKey
-            );
-            const toAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection, fromKeypair, mintPublicKey, recipient
-            );
-
-            // Send the tokens
-            const signature = await splToken.transfer(
-                connection,
-                fromKeypair,
-                fromAta.address,
-                toAta.address,
-                fromKeypair.publicKey,
-                Math.floor(amount * 1e9) // Assume 9 decimals for LAYER, adjust if different
-            );
-            sLog(`🪙 Sent ${amount.toFixed(6)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
-            return signature;
-        }
-
-        // The main sender loop
-        async function senderLoop() {
-            const rpc = $("rpcSender").value.trim();
-            const mnemonic = $("mnemonic").value.trim();
-            const index = parseInt($("derivIndex").value || '0');
-            const mode = $("modeSender").value;
-            const mint = $("layerMint").value.trim();
-
-            if (!mnemonic) {
-                showMessage('Please enter a seed phrase.');
-                return;
+                logB('🛑 Bot stopped.');
+                $('startBot').disabled = false;
+                $('stopBot').disabled = true;
             }
 
-            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
-            const wallet = await deriveKeypairFromMnemonic(mnemonic, index);
-            sLog(`Loaded wallet: ${wallet.publicKey.toBase58()} (index ${index})`);
+            $('startBot').onclick = () => { if (!botRunning) botLoop(); };
+            $('stopBot').onclick = () => { botRunning = false; };
 
-            senderRun = true;
-            while (senderRun) {
-                senderStats.sent++;
-                updateS();
+            /* ============================
+               Manual Swap UI
+               ============================ */
+            function logS(m) {
+                const t = new Date().toLocaleTimeString();
+                $('logS').textContent += `[${t}] ${m}\n`;
+                $('logS').scrollTop = $('logS').scrollHeight;
+            }
+
+            async function handleManualSwapAction(actionType) {
+                const rpc = $('rpcS').value.trim();
+                const layerMint = $('layerMintS').value.trim();
+                const mnemonic = $('mnemonicS').value.trim();
+                const dir = $('swapDir').value;
+                const amtUi = parseFloat($('swapAmountS').value || '0');
+
+                if (!mnemonic) { showMsg('Enter mnemonic to sign.', 'error'); return; }
+                if (!amtUi || amtUi <= 0) { showMsg('Enter a valid amount.', 'error'); return; }
+
+                $('btnQuoteNow').disabled = true;
+                $('btnSwapNow').disabled = true;
+
                 try {
-                    // Randomly choose between SOL and LAYER if the mode is 'both'
-                    const choice = mode === 'both' ? (Math.random() < 0.5 ? 'sol' : 'layer') : mode;
-                    if (choice === 'sol') {
-                        await sendRandomSOL(connection, wallet);
-                    } else {
-                        await sendRandomLAYER(connection, wallet, mint);
-                    }
-                    senderStats.ok++;
-                    updateS();
-                } catch (e) {
-                    senderStats.err++;
-                    updateS();
-                    sLog(`❌ Send error: ${e?.message || e}`);
-                }
-                // Wait for a random delay before the next transaction
-                const delay = Math.floor(rand(1000, 5000));
-                sLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
-                await sleep(delay);
-            }
-            sLog('🛑 Sender loop stopped.');
-        }
+                    const conn = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+                    const wallet = await deriveKeypairFromMnemonic(mnemonic.split(/\n+/)[0], 0);
+                    const fromMint = dir === 'sol2layer' ? 'So11111111111111111111111111111111111111112' : layerMint;
+                    const toMint = dir === 'sol2layer' ? layerMint : 'So11111111111111111111111111111111111111112';
 
-        $("startSender").onclick = () => { if (!senderRun) senderLoop(); };
-        $("stopSender").onclick = () => { senderRun = false; };
+                    if (actionType === 'quote') {
+                        logS(`Requesting Jupiter quote ${dir.toUpperCase()}...`);
+                        const q = await tryJupiterQuote(fromMint, toMint, Math.floor(amtUi * 1e9).toString());
+                        logS('Quote result: ' + (q ? JSON.stringify(q.data?.[0] || q) : 'none'));
+                        if(q && q.data && q.data.length > 0) {
+                             showMsg('Quote fetched successfully!', 'success');
+                        } else {
+                             showMsg('Failed to fetch a quote.', 'error');
+                        }
+                    } else if (actionType === 'swap') {
+                        logS(`Starting manual swap ${dir.toUpperCase()} ${amtUi}...`);
+                        const res = await autoDetectAndSwap({ conn, wallet, fromMint, toMint, uiAmount: amtUi });
+                        logS('Swap result: ' + JSON.stringify(res));
+                        if (res.sig) {
+                            showMsg('Swap successful!', 'success');
+                        } else {
+                            showMsg('Swap failed: ' + res.error, 'error');
+                        }
+                    }
+                } catch (e) {
+                    logS(`Action failed: ${e?.message || e}`);
+                    showMsg('An error occurred during the action.', 'error');
+                } finally {
+                    $('btnQuoteNow').disabled = false;
+                    $('btnSwapNow').disabled = false;
+                }
+            }
+
+            $('btnQuoteNow').onclick = () => handleManualSwapAction('quote');
+            $('btnSwapNow').onclick = () => handleManualSwapAction('swap');
+        }
     </script>
 </body>
 </html>
+�
