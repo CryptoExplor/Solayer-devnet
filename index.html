@@ -148,293 +148,296 @@
     </div>
 
     <script>
-        // Set Buffer as a global variable
-        window.Buffer = buffer.Buffer;
+        // Use window.onload to ensure the script runs after the DOM is ready.
+        window.onload = function() {
+            // Set Buffer as a global variable
+            window.Buffer = buffer.Buffer;
 
-        // Helper function to get an element by ID
-        const $ = (id) => document.getElementById(id);
+            // Helper function to get an element by ID
+            const $ = (id) => document.getElementById(id);
 
-        // Helper function for a non-blocking delay
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            // Helper function for a non-blocking delay
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-        // Helper function for a random number within a range
-        const rand = (min, max) => Math.random() * (max - min) + min;
+            // Helper function for a random number within a range
+            const rand = (min, max) => Math.random() * (max - min) + min;
 
-        // Custom message box to replace alert()
-        function showMessage(msg) {
-            const msgBox = $('message-box');
-            const msgText = $('message-text');
-            msgText.textContent = msg;
-            msgBox.classList.add('show');
-            // Hide the message after a few seconds
-            setTimeout(() => {
-                msgBox.classList.remove('show');
-            }, 4000);
-        }
-
-        // Tab functionality
-        const tabF = $("tab-faucet"), tabS = $("tab-sender");
-        const panelF = $("panel-faucet"), panelS = $("panel-sender");
-        tabF.onclick = () => { tabF.classList.add('active'); tabS.classList.remove('active'); panelF.classList.remove('hidden'); panelS.classList.add('hidden'); };
-        tabS.onclick = () => { tabS.classList.add('active'); tabF.classList.remove('active'); panelS.classList.remove('hidden'); panelF.classList.add('hidden'); };
-
-
-        // ===== Faucet Auto‑Claimer Logic =====
-        let faucetRun = false;
-        let faucetStats = { total: 0, ok: 0, err: 0 };
-
-        // Logs messages to the Faucet section
-        function fLog(msg) {
-            const ts = new Date().toLocaleTimeString();
-            const logElement = $("logFaucet");
-            logElement.textContent += `[${ts}] ${msg}\n`;
-            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
-        }
-
-        // Updates the Faucet stats display
-        function updateF() {
-            $("faucetTotal").textContent = `Total: ${faucetStats.total}`;
-            $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
-            $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
-        }
-
-        // The main faucet loop
-        async function faucetLoop() {
-            const rpc = $("rpcFaucet").value.trim();
-            const amountSol = parseFloat($("amtFaucet").value || '0.1');
-            const lamports = Math.floor(amountSol * 1e9);
-            const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
-
-            if (!addresses.length) {
-                showMessage('Please enter at least one address for the Faucet.');
-                return;
+            // Custom message box to replace alert()
+            function showMessage(msg) {
+                const msgBox = $('message-box');
+                const msgText = $('message-text');
+                msgText.textContent = msg;
+                msgBox.classList.add('show');
+                // Hide the message after a few seconds
+                setTimeout(() => {
+                    msgBox.classList.remove('show');
+                }, 4000);
             }
 
-            faucetRun = true;
-            fLog(`Connecting to RPC → ${rpc}`);
-            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+            // Tab functionality
+            const tabF = $("tab-faucet"), tabS = $("tab-sender");
+            const panelF = $("panel-faucet"), panelS = $("panel-sender");
+            tabF.onclick = () => { tabF.classList.add('active'); tabS.classList.remove('active'); panelF.classList.remove('hidden'); panelS.classList.add('hidden'); };
+            tabS.onclick = () => { tabS.classList.add('active'); tabF.classList.remove('active'); panelS.classList.remove('hidden'); panelF.classList.add('hidden'); };
 
-            while (faucetRun) {
-                // Select a random address from the list
-                const addr = addresses[Math.floor(Math.random() * addresses.length)];
-                
-                try {
-                    faucetStats.total++;
-                    updateF();
-                    const pk = new solanaWeb3.PublicKey(addr);
-                    fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
-                    const sig = await connection.requestAirdrop(pk, lamports);
-                    fLog(`Airdrop TX → ${sig}`);
 
-                    // Wait for transaction confirmation
-                    fLog(`Waiting for confirmation...`);
-                    await connection.confirmTransaction(sig, 'confirmed');
-                    faucetStats.ok++;
-                    updateF();
-                    fLog(`✅ Airdrop confirmed!`);
-                } catch (e) {
-                    faucetStats.err++;
-                    updateF();
-                    fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
+            // ===== Faucet Auto‑Claimer Logic =====
+            let faucetRun = false;
+            let faucetStats = { total: 0, ok: 0, err: 0 };
+
+            // Logs messages to the Faucet section
+            function fLog(msg) {
+                const ts = new Date().toLocaleTimeString();
+                const logElement = $("logFaucet");
+                logElement.textContent += `[${ts}] ${msg}\n`;
+                logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
+            }
+
+            // Updates the Faucet stats display
+            function updateF() {
+                $("faucetTotal").textContent = `Total: ${faucetStats.total}`;
+                $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
+                $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
+            }
+
+            // The main faucet loop
+            async function faucetLoop() {
+                const rpc = $("rpcFaucet").value.trim();
+                const amountSol = parseFloat($("amtFaucet").value || '0.1');
+                const lamports = Math.floor(amountSol * 1e9);
+                const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+
+                if (!addresses.length) {
+                    showMessage('Please enter at least one address for the Faucet.');
+                    return;
                 }
-                // Wait for a random delay before the next airdrop
-                const delay = Math.floor(rand(1000, 5000));
-                fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
-                await sleep(delay);
+
+                faucetRun = true;
+                fLog(`Connecting to RPC → ${rpc}`);
+                const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+
+                while (faucetRun) {
+                    // Select a random address from the list
+                    const addr = addresses[Math.floor(Math.random() * addresses.length)];
+                    
+                    try {
+                        faucetStats.total++;
+                        updateF();
+                        const pk = new solanaWeb3.PublicKey(addr);
+                        fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
+                        const sig = await connection.requestAirdrop(pk, lamports);
+                        fLog(`Airdrop TX → ${sig}`);
+
+                        // Wait for transaction confirmation
+                        fLog(`Waiting for confirmation...`);
+                        await connection.confirmTransaction(sig, 'confirmed');
+                        faucetStats.ok++;
+                        updateF();
+                        fLog(`✅ Airdrop confirmed!`);
+                    } catch (e) {
+                        faucetStats.err++;
+                        updateF();
+                        fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
+                    }
+                    // Wait for a random delay before the next airdrop
+                    const delay = Math.floor(rand(1000, 5000));
+                    fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
+                    await sleep(delay);
+                }
+                fLog('🛑 Faucet loop stopped.');
             }
-            fLog('🛑 Faucet loop stopped.');
-        }
 
-        $("startFaucet").onclick = () => { if (!faucetRun) faucetLoop(); };
-        $("stopFaucet").onclick = () => { faucetRun = false; };
+            $("startFaucet").onclick = () => { if (!faucetRun) faucetLoop(); };
+            $("stopFaucet").onclick = () => { faucetRun = false; };
 
-        // ===== Auto Sender (SOL & LAYER) Logic =====
-        let senderRun = false;
-        let senderStats = { sent: 0, ok: 0, err: 0 };
-        let walletProvider = null;
-        // Make splToken globally accessible
-        const { splToken } = window;
+            // ===== Auto Sender (SOL & LAYER) Logic =====
+            let senderRun = false;
+            let senderStats = { sent: 0, ok: 0, err: 0 };
+            let walletProvider = null;
+            // Make splToken globally accessible
+            const { splToken } = window;
 
 
-        // Logs messages to the Sender section
-        function sLog(msg) {
-            const ts = new Date().toLocaleTimeString();
-            const logElement = $("logSender");
-            logElement.textContent += `[${ts}] ${msg}\n`;
-            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
-        }
-
-        // Updates the Sender stats display
-        function updateS() {
-            $("senderSent").textContent = `Sent: ${senderStats.sent}`;
-            $("senderOk").textContent = `OK: ${senderStats.ok}`;
-            $("senderErr").textContent = `Err: ${senderStats.err}`;
-        }
-        
-        // Updates wallet connection status
-        function updateConnectionStatus(isConnected, publicKey = null) {
-            const statusEl = $('connectionStatus');
-            const addressEl = $('connectedAddress');
-            if (isConnected) {
-                statusEl.textContent = 'Connected';
-                statusEl.classList.add('connected');
-                addressEl.value = publicKey.toBase58();
-            } else {
-                statusEl.textContent = 'Not Connected';
-                statusEl.classList.remove('connected');
-                addressEl.value = '';
+            // Logs messages to the Sender section
+            function sLog(msg) {
+                const ts = new Date().toLocaleTimeString();
+                const logElement = $("logSender");
+                logElement.textContent += `[${ts}] ${msg}\n`;
+                logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
             }
-        }
-        
-        // Function to connect to a browser wallet
-        async function connectWallet() {
+
+            // Updates the Sender stats display
+            function updateS() {
+                $("senderSent").textContent = `Sent: ${senderStats.sent}`;
+                $("senderOk").textContent = `OK: ${senderStats.ok}`;
+                $("senderErr").textContent = `Err: ${senderStats.err}`;
+            }
+            
+            // Updates wallet connection status
+            function updateConnectionStatus(isConnected, publicKey = null) {
+                const statusEl = $('connectionStatus');
+                const addressEl = $('connectedAddress');
+                if (isConnected) {
+                    statusEl.textContent = 'Connected';
+                    statusEl.classList.add('connected');
+                    addressEl.value = publicKey.toBase58();
+                } else {
+                    statusEl.textContent = 'Not Connected';
+                    statusEl.classList.remove('connected');
+                    addressEl.value = '';
+                }
+            }
+            
+            // Function to connect to a browser wallet
+            async function connectWallet() {
+                if ("solana" in window) {
+                    try {
+                        const solana = window.solana;
+                        const response = await solana.connect();
+                        walletProvider = solana;
+                        updateConnectionStatus(true, response.publicKey);
+                        sLog(`Connected to wallet: ${response.publicKey.toBase58()}`);
+                    } catch (e) {
+                        showMessage(`Error connecting to wallet: ${e?.message || e}`);
+                        sLog(`❌ Error connecting to wallet: ${e?.message || e}`);
+                    }
+                } else {
+                    showMessage("Solana wallet not found. Please install Phantom or Solflare.");
+                    sLog("❌ Solana wallet not found. Please install Phantom or Solflare.");
+                }
+            }
+
+            // Sends a random amount of SOL to a new random address
+            async function sendRandomSOL(connection, wallet) {
+                const recipient = solanaWeb3.Keypair.generate().publicKey;
+                const amount = rand(0.001, 0.05); // Random amount between 0.001 and 0.05 SOL
+                const transaction = new solanaWeb3.Transaction().add(
+                    solanaWeb3.SystemProgram.transfer({
+                        fromPubkey: wallet.publicKey,
+                        toPubkey: recipient,
+                        lamports: Math.floor(amount * 1e9) // Convert SOL to lamports
+                    })
+                );
+
+                // Get the recent blockhash before signing and sending
+                transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+                transaction.feePayer = wallet.publicKey;
+                
+                // Sign and send the transaction using the wallet provider
+                const signature = await wallet.signAndSendTransaction(transaction);
+                sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
+                return signature;
+            }
+
+            // Sends a random amount of LAYER tokens to a new random address
+            async function sendRandomLAYER(connection, wallet, mintStr) {
+                const recipient = solanaWeb3.Keypair.generate().publicKey;
+                const amount = rand(0.0001, 0.005);
+                const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
+
+                // Fetch the mint account to get the correct decimals
+                const mintInfo = await splToken.getMint(connection, mintPublicKey);
+                const decimals = mintInfo.decimals;
+                const amountInLamports = Math.floor(amount * Math.pow(10, decimals));
+
+                // Get or create the associated token accounts for both sender and recipient
+                const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
+                    connection, wallet.publicKey, mintPublicKey, wallet.publicKey
+                );
+                const toAta = await splToken.getOrCreateAssociatedTokenAccount(
+                    connection, wallet.publicKey, mintPublicKey, recipient
+                );
+
+                // Build the transaction
+                const transaction = new solanaWeb3.Transaction().add(
+                    splToken.createTransferInstruction(
+                        fromAta.address,
+                        toAta.address,
+                        wallet.publicKey,
+                        amountInLamports
+                    )
+                );
+                
+                // Get the recent blockhash before signing and sending
+                transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+                transaction.feePayer = wallet.publicKey;
+
+                // Sign and send the transaction using the wallet provider
+                const signature = await wallet.signAndSendTransaction(transaction);
+                sLog(`🪙 Sent ${amount.toFixed(decimals)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
+                return signature;
+            }
+
+            // The main sender loop
+            async function senderLoop() {
+                const rpc = $("rpcSender").value.trim();
+                const mode = $("modeSender").value;
+                const mint = $("layerMint").value.trim();
+
+                if (!walletProvider || !walletProvider.publicKey) {
+                    showMessage('Please connect your wallet first.');
+                    return;
+                }
+
+                const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+
+                sLog(`Connected wallet: ${walletProvider.publicKey.toBase58()}`);
+
+                senderRun = true;
+                while (senderRun) {
+                    try {
+                        // Check the balance before attempting any transaction
+                        const balance = await connection.getBalance(walletProvider.publicKey);
+                        const balanceSol = balance / solanaWeb3.LAMPORTS_PER_SOL;
+                        sLog(`Current balance: ${balanceSol.toFixed(4)} SOL`);
+
+                        // A minimal check to ensure we have enough for fees
+                        if (balanceSol < 0.001) {
+                            sLog('⚠️ Insufficient SOL balance for fees. Stopping sender. Please get more SOL from the Faucet tab.');
+                            senderRun = false;
+                            break;
+                        }
+
+                        senderStats.sent++;
+                        updateS();
+
+                        // Randomly choose between SOL and LAYER if the mode is 'both'
+                        const choice = mode === 'both' ? (Math.random() < 0.5 ? 'sol' : 'layer') : mode;
+                        if (choice === 'sol') {
+                            await sendRandomSOL(connection, walletProvider);
+                        } else {
+                            await sendRandomLAYER(connection, walletProvider, mint);
+                        }
+                        senderStats.ok++;
+                        updateS();
+                    } catch (e) {
+                        senderStats.err++;
+                        updateS();
+                        sLog(`❌ Send error: ${e?.message || e}`);
+                    }
+                    
+                    // Wait for a random delay before the next transaction
+                    const delay = Math.floor(rand(1000, 5000));
+                    sLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
+                    await sleep(delay);
+                }
+                sLog('🛑 Sender loop stopped.');
+            }
+
+            $("connectWalletBtn").onclick = connectWallet;
+            $("startSender").onclick = () => { if (!senderRun) senderLoop(); };
+            $("stopSender").onclick = () => { senderRun = false; };
+
+            // Handle wallet disconnection
             if ("solana" in window) {
-                try {
-                    const solana = window.solana;
-                    const response = await solana.connect();
-                    walletProvider = solana;
-                    updateConnectionStatus(true, response.publicKey);
-                    sLog(`Connected to wallet: ${response.publicKey.toBase58()}`);
-                } catch (e) {
-                    showMessage(`Error connecting to wallet: ${e?.message || e}`);
-                    sLog(`❌ Error connecting to wallet: ${e?.message || e}`);
-                }
-            } else {
-                showMessage("Solana wallet not found. Please install Phantom or Solflare.");
-                sLog("❌ Solana wallet not found. Please install Phantom or Solflare.");
+                window.solana.on('disconnect', () => {
+                    sLog("Wallet disconnected.");
+                    senderRun = false;
+                    walletProvider = null;
+                    updateConnectionStatus(false);
+                });
             }
-        }
-
-        // Sends a random amount of SOL to a new random address
-        async function sendRandomSOL(connection, wallet) {
-            const recipient = solanaWeb3.Keypair.generate().publicKey;
-            const amount = rand(0.001, 0.05); // Random amount between 0.001 and 0.05 SOL
-            const transaction = new solanaWeb3.Transaction().add(
-                solanaWeb3.SystemProgram.transfer({
-                    fromPubkey: wallet.publicKey,
-                    toPubkey: recipient,
-                    lamports: Math.floor(amount * 1e9) // Convert SOL to lamports
-                })
-            );
-
-            // Get the recent blockhash before signing and sending
-            transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
-            transaction.feePayer = wallet.publicKey;
-            
-            // Sign and send the transaction using the wallet provider
-            const signature = await wallet.signAndSendTransaction(transaction);
-            sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
-            return signature;
-        }
-
-        // Sends a random amount of LAYER tokens to a new random address
-        async function sendRandomLAYER(connection, wallet, mintStr) {
-            const recipient = solanaWeb3.Keypair.generate().publicKey;
-            const amount = rand(0.0001, 0.005);
-            const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
-
-            // Fetch the mint account to get the correct decimals
-            const mintInfo = await splToken.getMint(connection, mintPublicKey);
-            const decimals = mintInfo.decimals;
-            const amountInLamports = Math.floor(amount * Math.pow(10, decimals));
-
-            // Get or create the associated token accounts for both sender and recipient
-            const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection, wallet.publicKey, mintPublicKey, wallet.publicKey
-            );
-            const toAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection, wallet.publicKey, mintPublicKey, recipient
-            );
-
-            // Build the transaction
-            const transaction = new solanaWeb3.Transaction().add(
-                splToken.createTransferInstruction(
-                    fromAta.address,
-                    toAta.address,
-                    wallet.publicKey,
-                    amountInLamports
-                )
-            );
-            
-            // Get the recent blockhash before signing and sending
-            transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
-            transaction.feePayer = wallet.publicKey;
-
-            // Sign and send the transaction using the wallet provider
-            const signature = await wallet.signAndSendTransaction(transaction);
-            sLog(`🪙 Sent ${amount.toFixed(decimals)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
-            return signature;
-        }
-
-        // The main sender loop
-        async function senderLoop() {
-            const rpc = $("rpcSender").value.trim();
-            const mode = $("modeSender").value;
-            const mint = $("layerMint").value.trim();
-
-            if (!walletProvider || !walletProvider.publicKey) {
-                showMessage('Please connect your wallet first.');
-                return;
-            }
-
-            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
-
-            sLog(`Connected wallet: ${walletProvider.publicKey.toBase58()}`);
-
-            senderRun = true;
-            while (senderRun) {
-                try {
-                    // Check the balance before attempting any transaction
-                    const balance = await connection.getBalance(walletProvider.publicKey);
-                    const balanceSol = balance / solanaWeb3.LAMPORTS_PER_SOL;
-                    sLog(`Current balance: ${balanceSol.toFixed(4)} SOL`);
-
-                    // A minimal check to ensure we have enough for fees
-                    if (balanceSol < 0.001) {
-                        sLog('⚠️ Insufficient SOL balance for fees. Stopping sender. Please get more SOL from the Faucet tab.');
-                        senderRun = false;
-                        break;
-                    }
-
-                    senderStats.sent++;
-                    updateS();
-
-                    // Randomly choose between SOL and LAYER if the mode is 'both'
-                    const choice = mode === 'both' ? (Math.random() < 0.5 ? 'sol' : 'layer') : mode;
-                    if (choice === 'sol') {
-                        await sendRandomSOL(connection, walletProvider);
-                    } else {
-                        await sendRandomLAYER(connection, walletProvider, mint);
-                    }
-                    senderStats.ok++;
-                    updateS();
-                } catch (e) {
-                    senderStats.err++;
-                    updateS();
-                    sLog(`❌ Send error: ${e?.message || e}`);
-                }
-                
-                // Wait for a random delay before the next transaction
-                const delay = Math.floor(rand(1000, 5000));
-                sLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
-                await sleep(delay);
-            }
-            sLog('🛑 Sender loop stopped.');
-        }
-
-        $("connectWalletBtn").onclick = connectWallet;
-        $("startSender").onclick = () => { if (!senderRun) senderLoop(); };
-        $("stopSender").onclick = () => { senderRun = false; };
-
-        // Handle wallet disconnection
-        if ("solana" in window) {
-            window.solana.on('disconnect', () => {
-                sLog("Wallet disconnected.");
-                senderRun = false;
-                walletProvider = null;
-                updateConnectionStatus(false);
-            });
-        }
+        };
     </script>
 </body>
 </html>
