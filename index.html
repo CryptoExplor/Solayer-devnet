@@ -354,11 +354,15 @@
             const amount = rand(0.0001, 0.005);
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
-            // --- FIX APPLIED HERE ---
-            // The IIFE build of spl-token v0.4.6 exposes standalone functions directly.
-            // We no longer need to create a `new splToken.Token` instance.
-            // We can call `splToken.getMint` directly to get the mint's info.
-            const mintInfo = await splToken.getMint(connection, mintPublicKey);
+            // The IIFE build of spl-token v0.4.6 requires creating a Token class instance
+            // to access its methods, as opposed to directly calling standalone functions.
+            const token = new splToken.Token(
+                connection,
+                mintPublicKey,
+                splToken.TOKEN_PROGRAM_ID,
+                wallet // payer
+            );
+            const mintInfo = await token.getMintInfo();
             const decimals = mintInfo.decimals;
             const amountInLamports = Math.floor(amount * Math.pow(10, decimals));
 
