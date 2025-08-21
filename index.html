@@ -13,7 +13,11 @@
     window.Buffer = buffer.Buffer;
     </script>
     <!-- SPL Token -->
-    <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.js"></script>
+    <script src="https://unpkg.com/@solana/spl-token@0.4.13/lib/index.iife.js"></script>
+    <script>
+    // This variable is now accessible by all functions in this script block
+    const splToken = window.splToken;
+    </script>
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
