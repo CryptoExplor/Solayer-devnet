@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Solayer Devnet — Faucet Bot & Random Sender</title>
+    <link rel="preconnect" href="https://unpkg.com">
+    <!-- Solana Web3 library -->
+    <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+    <!-- SPL Token (IIFE build exposes global `splToken`) -->
+    <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
+    <!-- Mnemonic → seed (browser build exposes global `bip39`) -->
+    <script src="https://unpkg.com/bip39@3.1.0/browser/bip39.min.js"></script>
+    <!-- Ed25519 HD derivation (tries to expose `ed25519HDKey`) -->
+    <script src="https://unpkg.com/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js"></script>
+    <style>
+        :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
+        *{box-sizing:border-box}
+        body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Arial}
+        .wrap{max-width:1100px;margin:20px auto;padding:16px}
+        h1{font-size:20px;margin:0 0 12px}
+        .tabs{display:flex;gap:8px;margin-bottom:12px}
+        .tab{padding:8px 12px;border:1px solid #25315a;background:#0e1633;border-radius:10px;cursor:pointer;transition:background-color 0.3s, border-color 0.3s;}
+        .tab.active{background:linear-gradient(135deg,#4169e1,#29c6ff);color:#001225;border:0}
+        .card{background:linear-gradient(180deg,#121a36,#0e152b);border:1px solid #1f2745;border-radius:14px;padding:14px}
+        textarea,input,button{width:100%;border-radius:10px;border:1px solid #20305e;background:#0c1430;color:var(--text);padding:10px;outline:none;}
+        button{cursor:pointer;font-weight:700;transition:background-color 0.3s;}
+        .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        .muted{color:#9fb0d6}
+        .pill{display:inline-block;margin-right:8px;margin-top:8px;padding:6px 10px;border-radius:999px;border:1px solid #29335a;background:#0d1533}
+        .ok{border-color:#1e6f4f;color:#a9f3cd}
+        .err{border-color:#7a2b2b;color:#ffb6b6}
+        pre{height:360px;overflow:auto;background:#091130;border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap}
+        .hidden{display:none}
+        /* Custom Message Box Styles */
+        #message-box {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            max-width: 300px;
+            padding: 15px;
+            background: #25315a;
+            border: 1px solid #3c4c7b;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none; /* Initially hidden */
+        }
+        #message-box.show {
+            display: block;
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #message-box p {
+            margin: 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <h1>Solayer Devnet — Faucet Bot & Random Sender</h1>
+        <div class="tabs">
+            <button class="tab active" id="tab-faucet">Faucet Auto‑Claimer</button>
+            <button class="tab" id="tab-sender">Auto Sender (SOL & LAYER)</button>
+        </div>
+
+        <!-- Faucet Tab -->
+        <section id="panel-faucet" class="card">
+            <p class="muted">Runs indefinitely with random 1–5s delay across all addresses.</p>
+            <div class="row">
+                <div>
+                    <label>RPC URL</label>
+                    <input id="rpcFaucet" value="https://devnet-rpc.solayer.org" />
+                </div>
+                <div>
+                    <label>Amount per airdrop (SOL)</label>
+                    <input id="amtFaucet" type="number" step="0.001" value="0.1" />
+                </div>
+            </div>
+            <label style="margin-top:8px">Wallet addresses (one per line, base58)</label>
+            <textarea id="addrsFaucet" rows="6" placeholder="9x3H...\nC4nDy...\n..."></textarea>
+            <div class="row" style="margin-top:8px">
+                <button id="startFaucet">▶ Start Faucet Loop</button>
+                <button id="stopFaucet">⏹ Stop</button>
+            </div>
+            <div>
+                <span class="pill" id="faucetTotal">Total: 0</span>
+                <span class="pill ok" id="faucetOk">Success: 0</span>
+                <span class="pill err" id="faucetErr">Errors: 0</span>
+            </div>
+            <pre id="logFaucet"></pre>
+        </section>
+
+        <!-- Sender Tab -->
+        <section id="panel-sender" class="card hidden">
+            <p class="muted">Sends to a <b>random new address</b> every 1–5s. Ranges: SOL 0.001–0.05 · LAYER 0.0001–0.005</p>
+            <div class="row">
+                <div>
+                    <label>RPC URL</label>
+                    <input id="rpcSender" value="https://devnet-rpc.solayer.org" />
+                </div>
+                <div>
+                    <label>LAYER mint</label>
+                    <input id="layerMint" value="LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc" />
+                </div>
+            </div>
+            <label style="margin-top:8px">Seed phrase (mnemonic) — Devnet only ⚠️</label>
+            <textarea id="mnemonic" rows="3" placeholder="abandon abandon abandon ... (24 words)"></textarea>
+            <div class="row" style="margin-top:8px">
+                <div>
+                    <label>Derivation index</label>
+                    <input id="derivIndex" type="number" min="0" value="0" />
+                </div>
+                <div>
+                    <label>Mode</label>
+                    <select id="modeSender">
+                        <option value="both" selected>SOL or LAYER (random)</option>
+                        <option value="sol">SOL only</option>
+                        <option value="layer">LAYER only</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row" style="margin-top:8px">
+                <button id="startSender">▶ Start Auto Sender</button>
+                <button id="stopSender">⏹ Stop</button>
+            </div>
+            <div>
+                <span class="pill" id="senderSent">Sent: 0</span>
+                <span class="pill ok" id="senderOk">OK: 0</span>
+                <span class="pill err" id="senderErr">Err: 0</span>
+            </div>
+            <pre id="logSender"></pre>
+        </section>
+    </div>
+
+    <!-- Custom Message Box -->
+    <div id="message-box" class="card">
+        <p id="message-text"></p>
+    </div>
+
+    <script>
+        // Helper function to get an element by ID
+        const $ = (id) => document.getElementById(id);
+
+        // Helper function for a non-blocking delay
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+        // Helper function for a random number within a range
+        const rand = (min, max) => Math.random() * (max - min) + min;
+
+        // Custom message box to replace alert()
+        function showMessage(msg) {
+            const msgBox = $('message-box');
+            const msgText = $('message-text');
+            msgText.textContent = msg;
+            msgBox.classList.add('show');
+            // Hide the message after a few seconds
+            setTimeout(() => {
+                msgBox.classList.remove('show');
+            }, 4000);
+        }
+
+        // Tab functionality
+        const tabF = $("tab-faucet"), tabS = $("tab-sender");
+        const panelF = $("panel-faucet"), panelS = $("panel-sender");
+        tabF.onclick = () => { tabF.classList.add('active'); tabS.classList.remove('active'); panelF.classList.remove('hidden'); panelS.classList.add('hidden'); };
+        tabS.onclick = () => { tabS.classList.add('active'); tabF.classList.remove('active'); panelS.classList.remove('hidden'); panelF.classList.add('hidden'); };
+
+        // ===== Faucet Auto‑Claimer Logic =====
+        let faucetRun = false;
+        let faucetStats = { total: 0, ok: 0, err: 0 };
+
+        // Logs messages to the Faucet section
+        function fLog(msg) {
+            const ts = new Date().toLocaleTimeString();
+            const logElement = $("logFaucet");
+            logElement.textContent += `[${ts}] ${msg}\n`;
+            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
+        }
+
+        // Updates the Faucet stats display
+        function updateF() {
+            $("faucetTotal").textContent = `Total: ${faucetStats.total}`;
+            $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
+            $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
+        }
+
+        // The main faucet loop
+        async function faucetLoop() {
+            const rpc = $("rpcFaucet").value.trim();
+            const amountSol = parseFloat($("amtFaucet").value || '0.1');
+            const lamports = Math.floor(amountSol * 1e9);
+            const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+
+            if (!addresses.length) {
+                showMessage('Please enter at least one address for the Faucet.');
+                return;
+            }
+
+            faucetRun = true;
+            fLog(`Connecting to RPC → ${rpc}`);
+            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+
+            while (faucetRun) {
+                for (const addr of addresses) {
+                    // Check if the loop has been stopped before each iteration
+                    if (!faucetRun) break;
+                    
+                    try {
+                        faucetStats.total++;
+                        updateF();
+                        const pk = new solanaWeb3.PublicKey(addr);
+                        fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
+                        const sig = await connection.requestAirdrop(pk, lamports);
+                        fLog(`Airdrop TX → ${sig}`);
+
+                        // Wait for transaction confirmation
+                        fLog(`Waiting for confirmation...`);
+                        await connection.confirmTransaction(sig, 'confirmed');
+                        faucetStats.ok++;
+                        updateF();
+                        fLog(`✅ Airdrop confirmed!`);
+                    } catch (e) {
+                        faucetStats.err++;
+                        updateF();
+                        fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
+                    }
+                    // Wait for a random delay before the next airdrop
+                    const delay = Math.floor(rand(1000, 5000));
+                    fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
+                    await sleep(delay);
+                }
+            }
+            fLog('🛑 Faucet loop stopped.');
+        }
+
+        $("startFaucet").onclick = () => { if (!faucetRun) faucetLoop(); };
+        $("stopFaucet").onclick = () => { faucetRun = false; };
+
+        // ===== Auto Sender (SOL & LAYER) Logic =====
+        let senderRun = false;
+        let senderStats = { sent: 0, ok: 0, err: 0 };
+
+        // Logs messages to the Sender section
+        function sLog(msg) {
+            const ts = new Date().toLocaleTimeString();
+            const logElement = $("logSender");
+            logElement.textContent += `[${ts}] ${msg}\n`;
+            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
+        }
+
+        // Updates the Sender stats display
+        function updateS() {
+            $("senderSent").textContent = `Sent: ${senderStats.sent}`;
+            $("senderOk").textContent = `OK: ${senderStats.ok}`;
+            $("senderErr").textContent = `Err: ${senderStats.err}`;
+        }
+
+        // Derives a Solana Keypair from a BIP39 mnemonic phrase
+        async function deriveKeypairFromMnemonic(mnemonic, index = 0) {
+            try {
+                // Use the standard SLIP-0010 derivation path (m/44'/501'/{index}'/0')
+                if (window.bip39 && window.ed25519HDKey) {
+                    const seed = await window.bip39.mnemonicToSeed(mnemonic);
+                    const path = `m/44'/501'/${index}'/0'`;
+                    const { key } = window.ed25519HDKey.derivePath(path, seed.toString('hex'));
+                    return solanaWeb3.Keypair.fromSeed(new Uint8Array(key));
+                }
+            } catch (e) {
+                sLog(`Derivation library error: ${e?.message || e}. Falling back to a non-HD safe method.`);
+            }
+            // Fallback for environments where HD derivation is not supported
+            const seed = await window.bip39.mnemonicToSeed(mnemonic);
+            return solanaWeb3.Keypair.fromSeed(new Uint8Array(seed).slice(0, 32));
+        }
+
+        // Sends a random amount of SOL to a new random address
+        async function sendRandomSOL(connection, fromKeypair) {
+            const recipient = solanaWeb3.Keypair.generate().publicKey;
+            const amount = rand(0.001, 0.05); // Random amount between 0.001 and 0.05 SOL
+            const transaction = new solanaWeb3.Transaction().add(
+                solanaWeb3.SystemProgram.transfer({
+                    fromPubkey: fromKeypair.publicKey,
+                    toPubkey: recipient,
+                    lamports: Math.floor(amount * 1e9) // Convert SOL to lamports
+                })
+            );
+            const signature = await solanaWeb3.sendAndConfirmTransaction(connection, transaction, [fromKeypair]);
+            sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
+            return signature;
+        }
+
+        // Sends a random amount of LAYER tokens to a new random address
+        async function sendRandomLAYER(connection, fromKeypair, mintStr) {
+            const recipient = solanaWeb3.Keypair.generate().publicKey;
+            const amount = rand(0.0001, 0.005);
+            const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
+
+            // Get or create the associated token accounts for both sender and recipient
+            const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
+                connection, fromKeypair, mintPublicKey, fromKeypair.publicKey
+            );
+            const toAta = await splToken.getOrCreateAssociatedTokenAccount(
+                connection, fromKeypair, mintPublicKey, recipient
+            );
+
+            // Send the tokens
+            const signature = await splToken.transfer(
+                connection,
+                fromKeypair,
+                fromAta.address,
+                toAta.address,
+                fromKeypair.publicKey,
+                Math.floor(amount * 1e9) // Assume 9 decimals for LAYER, adjust if different
+            );
+            sLog(`🪙 Sent ${amount.toFixed(6)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
+            return signature;
+        }
+
+        // The main sender loop
+        async function senderLoop() {
+            const rpc = $("rpcSender").value.trim();
+            const mnemonic = $("mnemonic").value.trim();
+            const index = parseInt($("derivIndex").value || '0');
+            const mode = $("modeSender").value;
+            const mint = $("layerMint").value.trim();
+
+            if (!mnemonic) {
+                showMessage('Please enter a seed phrase.');
+                return;
+            }
+
+            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+            const wallet = await deriveKeypairFromMnemonic(mnemonic, index);
+            sLog(`Loaded wallet: ${wallet.publicKey.toBase58()} (index ${index})`);
+
+            senderRun = true;
+            while (senderRun) {
+                senderStats.sent++;
+                updateS();
+                try {
+                    // Randomly choose between SOL and LAYER if the mode is 'both'
+                    const choice = mode === 'both' ? (Math.random() < 0.5 ? 'sol' : 'layer') : mode;
+                    if (choice === 'sol') {
+                        await sendRandomSOL(connection, wallet);
+                    } else {
+                        await sendRandomLAYER(connection, wallet, mint);
+                    }
+                    senderStats.ok++;
+                    updateS();
+                } catch (e) {
+                    senderStats.err++;
+                    updateS();
+                    sLog(`❌ Send error: ${e?.message || e}`);
+                }
+                // Wait for a random delay before the next transaction
+                const delay = Math.floor(rand(1000, 5000));
+                sLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
+                await sleep(delay);
+            }
+            sLog('🛑 Sender loop stopped.');
+        }
+
+        $("startSender").onclick = () => { if (!senderRun) senderLoop(); };
+        $("stopSender").onclick = () => { senderRun = false; };
+    </script>
+</body>
+</html>
