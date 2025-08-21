@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Solayer Devnet — Faucet Bot & Random Sender</title>
     <link rel="preconnect" href="https://unpkg.com">
-    <!-- The CSS is kept as-is, since it was working correctly -->
+    <!-- Solana Web3 library -->
+    <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+    <!-- SPL Token (IIFE build exposes global `splToken`) -->
+    <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
+    <!-- Mnemonic → seed (browser build exposes global `bip39`) -->
+    <script src="https://unpkg.com/bip39@3.1.0/browser/bip39.min.js"></script>
+    <!-- Ed25519 HD derivation (tries to expose `ed25519HDKey`) -->
+    <script src="https://unpkg.com/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js"></script>
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
@@ -135,16 +142,7 @@
         <p id="message-text"></p>
     </div>
 
-    <!-- The corrected and refactored JavaScript -->
-    <script type="module">
-        // Import necessary functions from the Solana web3 and other libraries
-        import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.95.3/lib/index.iife.min.js";
-        import { getOrCreateAssociatedTokenAccount, transfer } from "https://cdn.jsdelivr.net/npm/@solana/spl-token@0.4.6/lib/index.iife.min.js";
-        import { mnemonicToSeed } from "https://cdn.jsdelivr.net/npm/bip39@3.1.0/browser/bip39.min.js";
-        // The ed25519-hd-key library isn't available via a clean import, so we'll handle it carefully
-        // const { derivePath } = require('ed25519-hd-key');
-        // We'll use a manual derivation fallback if the library isn't available globally
-
+    <script>
         // Helper function to get an element by ID
         const $ = (id) => document.getElementById(id);
 
@@ -160,6 +158,7 @@
             const msgText = $('message-text');
             msgText.textContent = msg;
             msgBox.classList.add('show');
+            // Hide the message after a few seconds
             setTimeout(() => {
                 msgBox.classList.remove('show');
             }, 4000);
@@ -171,7 +170,7 @@
         tabF.onclick = () => { tabF.classList.add('active'); tabS.classList.remove('active'); panelF.classList.remove('hidden'); panelS.classList.add('hidden'); };
         tabS.onclick = () => { tabS.classList.add('active'); tabF.classList.remove('active'); panelS.classList.remove('hidden'); panelF.classList.add('hidden'); };
 
-        // ===== Faucet Auto-Claimer Logic =====
+        // ===== Faucet Auto‑Claimer Logic =====
         let faucetRun = false;
         let faucetStats = { total: 0, ok: 0, err: 0 };
 
@@ -180,7 +179,7 @@
             const ts = new Date().toLocaleTimeString();
             const logElement = $("logFaucet");
             logElement.textContent += `[${ts}] ${msg}\n`;
-            logElement.scrollTop = logElement.scrollHeight;
+            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
         }
 
         // Updates the Faucet stats display
@@ -204,20 +203,22 @@
 
             faucetRun = true;
             fLog(`Connecting to RPC → ${rpc}`);
-            const connection = new Connection(rpc, { commitment: 'confirmed' });
+            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
 
             while (faucetRun) {
                 for (const addr of addresses) {
+                    // Check if the loop has been stopped before each iteration
                     if (!faucetRun) break;
                     
                     try {
                         faucetStats.total++;
                         updateF();
-                        const pk = new PublicKey(addr);
+                        const pk = new solanaWeb3.PublicKey(addr);
                         fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
                         const sig = await connection.requestAirdrop(pk, lamports);
                         fLog(`Airdrop TX → ${sig}`);
 
+                        // Wait for transaction confirmation
                         fLog(`Waiting for confirmation...`);
                         await connection.confirmTransaction(sig, 'confirmed');
                         faucetStats.ok++;
@@ -228,6 +229,7 @@
                         updateF();
                         fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
                     }
+                    // Wait for a random delay before the next airdrop
                     const delay = Math.floor(rand(1000, 5000));
                     fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
                     await sleep(delay);
@@ -248,7 +250,7 @@
             const ts = new Date().toLocaleTimeString();
             const logElement = $("logSender");
             logElement.textContent += `[${ts}] ${msg}\n`;
-            logElement.scrollTop = logElement.scrollHeight;
+            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
         }
 
         // Updates the Sender stats display
@@ -257,63 +259,63 @@
             $("senderOk").textContent = `OK: ${senderStats.ok}`;
             $("senderErr").textContent = `Err: ${senderStats.err}`;
         }
-        
+
         // Derives a Solana Keypair from a BIP39 mnemonic phrase
         async function deriveKeypairFromMnemonic(mnemonic, index = 0) {
             try {
-                // Check if the external derivation library is loaded and available
-                if (window.ed25519HDKey) {
-                    const seed = await mnemonicToSeed(mnemonic);
+                // Use the standard SLIP-0010 derivation path (m/44'/501'/{index}'/0')
+                if (window.bip39 && window.ed25519HDKey) {
+                    const seed = await window.bip39.mnemonicToSeed(mnemonic);
                     const path = `m/44'/501'/${index}'/0'`;
                     const { key } = window.ed25519HDKey.derivePath(path, seed.toString('hex'));
-                    return Keypair.fromSeed(new Uint8Array(key));
+                    return solanaWeb3.Keypair.fromSeed(new Uint8Array(key));
                 }
             } catch (e) {
-                sLog(`Derivation library error: ${e?.message || e}. Falling back...`);
+                sLog(`Derivation library error: ${e?.message || e}. Falling back to a non-HD safe method.`);
             }
-            // Fallback to a non-HD safe method if the HD library is not available
-            const seed = await mnemonicToSeed(mnemonic);
-            return Keypair.fromSeed(new Uint8Array(seed).slice(0, 32));
+            // Fallback for environments where HD derivation is not supported
+            const seed = await window.bip39.mnemonicToSeed(mnemonic);
+            return solanaWeb3.Keypair.fromSeed(new Uint8Array(seed).slice(0, 32));
         }
 
         // Sends a random amount of SOL to a new random address
         async function sendRandomSOL(connection, fromKeypair) {
-            const recipient = Keypair.generate().publicKey;
+            const recipient = solanaWeb3.Keypair.generate().publicKey;
             const amount = rand(0.001, 0.05); // Random amount between 0.001 and 0.05 SOL
-            const transaction = new Transaction().add(
-                SystemProgram.transfer({
+            const transaction = new solanaWeb3.Transaction().add(
+                solanaWeb3.SystemProgram.transfer({
                     fromPubkey: fromKeypair.publicKey,
                     toPubkey: recipient,
                     lamports: Math.floor(amount * 1e9) // Convert SOL to lamports
                 })
             );
-            const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair]);
+            const signature = await solanaWeb3.sendAndConfirmTransaction(connection, transaction, [fromKeypair]);
             sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
 
         // Sends a random amount of LAYER tokens to a new random address
         async function sendRandomLAYER(connection, fromKeypair, mintStr) {
-            const recipient = Keypair.generate().publicKey;
+            const recipient = solanaWeb3.Keypair.generate().publicKey;
             const amount = rand(0.0001, 0.005);
-            const mintPublicKey = new PublicKey(mintStr);
+            const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
             // Get or create the associated token accounts for both sender and recipient
-            const fromAta = await getOrCreateAssociatedTokenAccount(
+            const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
                 connection, fromKeypair, mintPublicKey, fromKeypair.publicKey
             );
-            const toAta = await getOrCreateAssociatedTokenAccount(
+            const toAta = await splToken.getOrCreateAssociatedTokenAccount(
                 connection, fromKeypair, mintPublicKey, recipient
             );
 
             // Send the tokens
-            const signature = await transfer(
+            const signature = await splToken.transfer(
                 connection,
                 fromKeypair,
                 fromAta.address,
                 toAta.address,
                 fromKeypair.publicKey,
-                Math.floor(amount * 1e9)
+                Math.floor(amount * 1e9) // Assume 9 decimals for LAYER, adjust if different
             );
             sLog(`🪙 Sent ${amount.toFixed(6)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
@@ -332,7 +334,7 @@
                 return;
             }
 
-            const connection = new Connection(rpc, { commitment: 'confirmed' });
+            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
             const wallet = await deriveKeypairFromMnemonic(mnemonic, index);
             sLog(`Loaded wallet: ${wallet.publicKey.toBase58()} (index ${index})`);
 
@@ -341,6 +343,7 @@
                 senderStats.sent++;
                 updateS();
                 try {
+                    // Randomly choose between SOL and LAYER if the mode is 'both'
                     const choice = mode === 'both' ? (Math.random() < 0.5 ? 'sol' : 'layer') : mode;
                     if (choice === 'sol') {
                         await sendRandomSOL(connection, wallet);
@@ -354,6 +357,7 @@
                     updateS();
                     sLog(`❌ Send error: ${e?.message || e}`);
                 }
+                // Wait for a random delay before the next transaction
                 const delay = Math.floor(rand(1000, 5000));
                 sLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
                 await sleep(delay);
