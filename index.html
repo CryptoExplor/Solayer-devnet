@@ -17,8 +17,6 @@
     <script>
     const splToken = window.splToken;
     </script>
-</head>
-
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
@@ -38,7 +36,6 @@
         .err{border-color:#7a2b2b;color:#ffb6b6}
         pre{height:360px;overflow:auto;background:#091130;border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap}
         .hidden{display:none}
-        /* Custom Message Box Styles */
         #message-box {
             position: fixed;
             top: 20px;
@@ -50,7 +47,7 @@
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             z-index: 1000;
-            display: none; /* Initially hidden */
+            display: none;
         }
         #message-box.show {
             display: block;
@@ -72,6 +69,13 @@
         }
         .connection-pill.connected {
             color: var(--ok);
+        }
+        /* Style for disabled buttons */
+        button:disabled {
+            background-color: #333;
+            color: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
         }
     </style>
 </head>
@@ -100,7 +104,7 @@
             <textarea id="addrsFaucet" rows="6" placeholder="9x3H...\nC4nDy...\n..."></textarea>
             <div class="row" style="margin-top:8px">
                 <button id="startFaucet">▶ Start Faucet Loop</button>
-                <button id="stopFaucet">⏹ Stop</button>
+                <button id="stopFaucet" disabled>⏹ Stop</button>
             </div>
             <div>
                 <span class="pill" id="faucetTotal">Total: 0</span>
@@ -138,8 +142,8 @@
             <label style="margin-top:8px">Connected Address</label>
             <input id="connectedAddress" readonly style="color: var(--ok);"/>
             <div class="row" style="margin-top:8px">
-                <button id="startSender">▶ Start Auto Sender</button>
-                <button id="stopSender">⏹ Stop</button>
+                <button id="startSender" disabled>▶ Start Auto Sender</button>
+                <button id="stopSender" disabled>⏹ Stop</button>
             </div>
             <div>
                 <span class="pill" id="senderSent">Sent: 0</span>
@@ -172,7 +176,6 @@
             const msgText = $('message-text');
             msgText.textContent = msg;
             msgBox.classList.add('show');
-            // Hide the message after a few seconds
             setTimeout(() => {
                 msgBox.classList.remove('show');
             }, 4000);
@@ -188,6 +191,8 @@
         // ===== Faucet Auto‑Claimer Logic =====
         let faucetRun = false;
         let faucetStats = { total: 0, ok: 0, err: 0 };
+        const startFaucetBtn = $("startFaucet");
+        const stopFaucetBtn = $("stopFaucet");
 
         // Logs messages to the Faucet section
         function fLog(msg) {
@@ -217,6 +222,8 @@
             }
 
             faucetRun = true;
+            startFaucetBtn.disabled = true;
+            stopFaucetBtn.disabled = false;
             fLog(`Connecting to RPC → ${rpc}`);
             const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
 
@@ -246,18 +253,25 @@
                 // Wait for a random delay before the next airdrop
                 const delay = Math.floor(rand(1000, 5000));
                 fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
-                await sleep(delay);
+                if (faucetRun) {
+                    await sleep(delay);
+                }
             }
             fLog('🛑 Faucet loop stopped.');
+            startFaucetBtn.disabled = false;
+            stopFaucetBtn.disabled = true;
         }
 
-        $("startFaucet").onclick = () => { if (!faucetRun) faucetLoop(); };
-        $("stopFaucet").onclick = () => { faucetRun = false; };
+        startFaucetBtn.onclick = () => { if (!faucetRun) faucetLoop(); };
+        stopFaucetBtn.onclick = () => { faucetRun = false; };
 
         // ===== Auto Sender (SOL & LAYER) Logic =====
         let senderRun = false;
         let senderStats = { sent: 0, ok: 0, err: 0 };
         let walletProvider = null;
+        const connectWalletBtn = $("connectWalletBtn");
+        const startSenderBtn = $("startSender");
+        const stopSenderBtn = $("stopSender");
 
         // Logs messages to the Sender section
         function sLog(msg) {
@@ -282,10 +296,13 @@
                 statusEl.textContent = 'Connected';
                 statusEl.classList.add('connected');
                 addressEl.value = publicKey.toBase58();
+                startSenderBtn.disabled = false;
             } else {
                 statusEl.textContent = 'Not Connected';
                 statusEl.classList.remove('connected');
                 addressEl.value = '';
+                startSenderBtn.disabled = true;
+                stopSenderBtn.disabled = true;
             }
         }
         
@@ -325,7 +342,7 @@
             transaction.feePayer = wallet.publicKey;
             
             // Sign and send the transaction using the wallet provider
-            const signature = await wallet.signAndSendTransaction(transaction);
+            const { signature } = await wallet.signAndSendTransaction(transaction);
             sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
@@ -341,28 +358,38 @@
             const decimals = mintInfo.decimals;
             const amountInLamports = Math.floor(amount * Math.pow(10, decimals));
 
-            // Get ATA addresses only (no creation here)
+            // Get associated token addresses
             const fromAta = await splToken.getAssociatedTokenAddress(mintPublicKey, wallet.publicKey);
             const toAta = await splToken.getAssociatedTokenAddress(mintPublicKey, recipient);
 
-            // Build ATA creation instruction for recipient
-            const ataIx = splToken.createAssociatedTokenAccountInstruction(
-                wallet.publicKey,   // payer
-                toAta,              // ATA address
-                recipient,          // token owner
-                mintPublicKey       // token mint
+            // Build transaction: create ATA for recipient if not exists + transfer
+            const transaction = new solanaWeb3.Transaction();
+
+            // Check if the recipient's ATA exists
+            const toAtaInfo = await connection.getAccountInfo(toAta);
+            if (!toAtaInfo) {
+                // If not, add an instruction to create the ATA first
+                transaction.add(
+                    splToken.createAssociatedTokenAccountInstruction(
+                        wallet.publicKey,    // payer
+                        toAta,               // new ATA
+                        recipient,           // token owner
+                        mintPublicKey        // token mint
+                    )
+                );
+            }
+
+            // Add the token transfer instruction
+            transaction.add(
+                splToken.createTransferInstruction(
+                    fromAta,
+                    toAta,
+                    wallet.publicKey,
+                    amountInLamports
+                )
             );
 
-            // Build token transfer instruction
-            const transferIx = splToken.createTransferInstruction(
-                fromAta,
-                toAta,
-                wallet.publicKey,
-                amountInLamports
-            );
-
-            const transaction = new solanaWeb3.Transaction().add(ataIx, transferIx);
-
+            // Set recent blockhash & fee payer
             transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
             transaction.feePayer = wallet.publicKey;
 
@@ -371,6 +398,7 @@
             sLog(`🪙 Sent ${amount.toFixed(decimals)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
+
         // The main sender loop
         async function senderLoop() {
             const rpc = $("rpcSender").value.trim();
@@ -387,6 +415,8 @@
             sLog(`Connected wallet: ${walletProvider.publicKey.toBase58()}`);
 
             senderRun = true;
+            startSenderBtn.disabled = true;
+            stopSenderBtn.disabled = false;
             while (senderRun) {
                 try {
                     // Check the balance before attempting any transaction
@@ -422,14 +452,18 @@
                 // Wait for a random delay before the next transaction
                 const delay = Math.floor(rand(1000, 5000));
                 sLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
-                await sleep(delay);
+                if (senderRun) {
+                    await sleep(delay);
+                }
             }
             sLog('🛑 Sender loop stopped.');
+            startSenderBtn.disabled = false;
+            stopSenderBtn.disabled = true;
         }
 
-        $("connectWalletBtn").onclick = connectWallet;
-        $("startSender").onclick = () => { if (!senderRun) senderLoop(); };
-        $("stopSender").onclick = () => { senderRun = false; };
+        connectWalletBtn.onclick = connectWallet;
+        startSenderBtn.onclick = () => { if (!senderRun) senderLoop(); };
+        stopSenderBtn.onclick = () => { senderRun = false; };
 
         // Handle wallet disconnection
         if ("solana" in window) {
