@@ -344,7 +344,7 @@
             transaction.feePayer = wallet.publicKey;
             
             // Sign and send the transaction using the wallet provider
-            const signature = await wallet.signAndSendTransaction(transaction);
+            const { signature } = await wallet.signAndSendTransaction(transaction);
             sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
@@ -397,7 +397,7 @@
             transaction.feePayer = wallet.publicKey;
 
             // Ask Phantom/Solflare to sign & send
-            const signature = await wallet.signAndSendTransaction(transaction);
+            const { signature } = await wallet.signAndSendTransaction(transaction);
             sLog(`🪙 Sent ${amount.toFixed(decimals)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
