@@ -211,10 +211,15 @@
         let senderRun = false;
         let walletProvider = null;
         let faucetStats = { total: 0, ok: 0, err: 0 };
-        let claimsPerWallet = {}; // New object to track claims per address
+        let claimsPerWallet = {};
         let senderStats = { sent: 0, ok: 0, err: 0 };
 
         window.onload = function() {
+            // Reset faucet counters on page load
+            faucetStats = { total: 0, ok: 0, err: 0 };
+            claimsPerWallet = {};
+            updateFaucetStats();
+
             setupEventListeners();
             handleModeChange(); // Initialize the sender UI on page load
             handleFaucetModeChange(); // Initialize the faucet UI on page load
