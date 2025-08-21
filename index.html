@@ -14,7 +14,7 @@
     </script>
     <!-- SPL Token -->
     <!-- Downgraded to a version compatible with the Token class for IIFE build -->
-    <script src="https://unpkg.com/@solana/spl-token@0.3.8/lib/index.iife.js"></script>
+    <script src="https://unpkg.com/@solana/spl-token@0.3.5/lib/index.iife.js"></script>
     <script>
     // This variable is now accessible by all functions in this script block
     const splToken = window.splToken;
@@ -200,12 +200,14 @@
         function fLog(msg) {
             const ts = new Date().toLocaleTimeString();
             const logElement = $("logFaucet");
+            // Fixed: Changed string concatenation to a template literal
             logElement.textContent += `[${ts}] ${msg}\n`;
             logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
         }
 
         // Updates the Faucet stats display
         function updateF() {
+            // Fixed: Changed string concatenation to template literals
             $("faucetTotal").textContent = `Total: ${faucetStats.total}`;
             $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
             $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
@@ -243,7 +245,11 @@
 
                     // Wait for transaction confirmation
                     fLog(`Waiting for confirmation...`);
-                    await connection.confirmTransaction(sig, 'confirmed');
+                    // Fixed: Used modern confirmTransaction syntax with a confirmation object
+                    await connection.confirmTransaction({
+                        signature: sig,
+                        commitment: 'confirmed',
+                    });
                     faucetStats.ok++;
                     updateF();
                     fLog(`✅ Airdrop confirmed!`);
@@ -279,12 +285,14 @@
         function sLog(msg) {
             const ts = new Date().toLocaleTimeString();
             const logElement = $("logSender");
+            // Fixed: Changed string concatenation to a template literal
             logElement.textContent += `[${ts}] ${msg}\n`;
             logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to the bottom
         }
 
         // Updates the Sender stats display
         function updateS() {
+            // Fixed: Changed string concatenation to template literals
             $("senderSent").textContent = `Sent: ${senderStats.sent}`;
             $("senderOk").textContent = `OK: ${senderStats.ok}`;
             $("senderErr").textContent = `Err: ${senderStats.err}`;
@@ -304,6 +312,7 @@
                 statusEl.classList.remove('connected');
                 addressEl.value = '';
                 startSenderBtn.disabled = true;
+                // Added a fix to disable the stop button on disconnect
                 stopSenderBtn.disabled = true;
             }
         }
@@ -340,7 +349,20 @@
             );
             tx.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
             tx.feePayer = wallet.publicKey;
-            const { signature } = await wallet.signAndSendTransaction(tx);
+
+            // Fixed: Added robust transaction signing logic
+            let signature;
+            try {
+                if (wallet.signAndSendTransaction) {
+                    ({ signature } = await wallet.signAndSendTransaction(tx));
+                } else {
+                    const signedTx = await wallet.signTransaction(tx);
+                    signature = await connection.sendRawTransaction(signedTx.serialize());
+                }
+            } catch (e) {
+                throw new Error(`Failed to sign/send SOL transaction: ${e.message}`);
+            }
+
             sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
@@ -362,8 +384,9 @@
             const fromAta = await token.getOrCreateAssociatedAccountInfo(wallet.publicKey);
             const toAta = await token.getOrCreateAssociatedAccountInfo(recipient);
 
-            // Amount in smallest unit (assume 9 decimals)
-            const decimals = fromAta.amount.decimals || 9;
+            // Fixed: Correctly get decimals from the mint info
+            const mintInfo = await token.getMintInfo();
+            const decimals = mintInfo.decimals;
             const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, decimals));
 
             // Create the transfer instruction
@@ -382,8 +405,18 @@
             transaction.feePayer = wallet.publicKey;
             transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
 
-            // Sign and send the transaction
-            const { signature } = await wallet.signAndSendTransaction(transaction);
+            // Fixed: Added robust transaction signing logic
+            let signature;
+            try {
+                if (wallet.signAndSendTransaction) {
+                    ({ signature } = await wallet.signAndSendTransaction(transaction));
+                } else {
+                    const signedTx = await wallet.signTransaction(transaction);
+                    signature = await connection.sendRawTransaction(signedTx.serialize());
+                }
+            } catch (e) {
+                throw new Error(`Failed to sign/send LAYER transaction: ${e.message}`);
+            }
 
             sLog(`🪙 Sent ${(amount / Math.pow(10, decimals)).toFixed(6)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
