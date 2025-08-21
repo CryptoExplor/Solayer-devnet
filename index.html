@@ -8,6 +8,8 @@
     <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
     <!-- SPL Token (IIFE build exposes global `splToken`) -->
     <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
+    <!-- Buffer polyfill for older browsers/environments -->
+    <script src="https://unpkg.com/buffer@6.0.3/index.js"></script>
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
@@ -146,6 +148,9 @@
     </div>
 
     <script>
+        // Set Buffer as a global variable
+        window.Buffer = buffer.Buffer;
+
         // Helper function to get an element by ID
         const $ = (id) => document.getElementById(id);
 
@@ -247,6 +252,9 @@
         let senderRun = false;
         let senderStats = { sent: 0, ok: 0, err: 0 };
         let walletProvider = null;
+        // Make splToken globally accessible
+        const { splToken } = window;
+
 
         // Logs messages to the Sender section
         function sLog(msg) {
