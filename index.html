@@ -128,7 +128,6 @@
                 </div>
                 <div>
                     <label>LAYER mint</label>
-                    <!-- The LAYER token mint address provided by the user -->
                     <input id="layerMint" value="LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc" />
                 </div>
             </div>
@@ -174,35 +173,18 @@
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         const rand = (min, max) => Math.random() * (max - min) + min;
 
-        // Constants
-        const TOKEN_PROGRAM_ID = solanaWeb3.SystemProgram.programId; // will be updated below
-        const ASSOCIATED_TOKEN_PROGRAM_ID = solanaWeb3.SystemProgram.programId; // will be updated below
-
         // Global state variables
         let faucetRun = false;
         let senderRun = false;
         let walletProvider = null;
         let faucetStats = { total: 0, ok: 0, err: 0 };
         let senderStats = { sent: 0, ok: 0, err: 0 };
+        let layerDecimals = 9; // Default, will be updated from mint info
 
         window.onload = function() {
-            // Wait for libraries to be loaded
-            if (window.solanaWeb3 && window.splToken) {
-                // Now that libraries are loaded, we can get their program IDs
-                // which might be defined on the imported objects.
-                // The provided code already imports them so this is for robustness.
-            }
-
-            // Assign program IDs after libraries are loaded
-            // Note: The original code manually defined these. Using the library's
-            // official constants is safer.
-            // If the code is run in an environment where these constants aren't
-            // immediately available, they'll be undefined. In this case,
-            // we'll fall back to the old, hardcoded values to prevent breaking.
-            window.TOKEN_PROGRAM_ID = window.splToken && window.splToken.TOKEN_PROGRAM_ID ? window.splToken.TOKEN_PROGRAM_ID : new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-            window.ASSOCIATED_TOKEN_PROGRAM_ID = window.splToken && window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID ? window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID : new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
-
-            // Set up event listeners and UI
+            // Assign program IDs using library constants with hardcoded fallbacks
+            window.TOKEN_PROGRAM_ID = (window.splToken && window.splToken.TOKEN_PROGRAM_ID) || new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+            window.ASSOCIATED_TOKEN_PROGRAM_ID = (window.splToken && window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID) || new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
             setupEventListeners();
         };
 
@@ -240,7 +222,7 @@
             stopSenderBtn.onclick = () => { senderRun = false; };
             
             // Wallet disconnect listener
-            if ("solana" in window) {
+            if ("solana" in window && window.solana) {
                 window.solana.on('disconnect', () => {
                     sLog("Wallet disconnected.");
                     senderRun = false;
@@ -366,7 +348,7 @@
         }
 
         async function connectWallet() {
-            if ("solana" in window) {
+            if ("solana" in window && window.solana) {
                 try {
                     const solana = window.solana;
                     const response = await solana.connect();
@@ -382,6 +364,50 @@
                 sLog("❌ Solana wallet not found. Please install Phantom or Solflare.");
             }
         }
+        
+        // Fetch token info and update the cached decimals
+        async function fetchTokenInfo(connection, mint) {
+            try {
+                const info = await connection.getParsedAccountInfo(mint);
+                const v = info && info.value;
+                if (v && v.data && typeof v.data === 'object' && v.data.parsed && v.data.parsed.info) {
+                    const parsed = v.data.parsed;
+                    if (parsed.info && typeof parsed.info.decimals === 'number') {
+                        layerDecimals = parsed.info.decimals;
+                        sLog(`🪙 Fetched token decimals for LAYER: ${layerDecimals}`);
+                        return;
+                    }
+                }
+                sLog('⚠️ Could not fetch token decimals (using default 9).');
+            } catch (e) {
+                sLog(`❌ Error fetching token info: ${e?.message || e}`);
+            }
+        }
+        
+        // Fetch token balance via getParsedTokenAccountsByOwner
+        async function fetchLayerBalance(connection, ownerPubkey, mintPubkey) {
+            try {
+                const resp = await connection.getParsedTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey });
+                if (resp && resp.value && resp.value.length > 0) {
+                    const acct = resp.value[0];
+                    const data = acct && acct.account && acct.account.data;
+                    const parsed = data && data.parsed;
+                    const info = parsed && parsed.info;
+                    const tokenAmount = info && info.tokenAmount;
+                    if (tokenAmount && typeof tokenAmount.uiAmount === 'number') {
+                        return tokenAmount.uiAmount;
+                    }
+                    if (tokenAmount && typeof tokenAmount.amount === 'string' && typeof tokenAmount.decimals === 'number') {
+                        const amt = Number(tokenAmount.amount) / Math.pow(10, tokenAmount.decimals);
+                        return amt;
+                    }
+                }
+                return 0;
+            } catch (e) {
+                sLog(`❌ Error fetching token balance: ${e?.message || e}`);
+                return 0;
+            }
+        }
 
         // Fetch and display balances
         async function fetchBalances(connection, publicKey) {
@@ -390,21 +416,21 @@
                 const solBalance = await connection.getBalance(publicKey);
                 $('solBalancePill').textContent = `SOL: ${(solBalance / solanaWeb3.LAMPORTS_PER_SOL).toFixed(4)}`;
 
-                // Fetch LAYER token balance
-                const mintPublicKey = new solanaWeb3.PublicKey($("layerMint").value.trim());
-                const tokenAccount = await solanaWeb3.PublicKey.findProgramAddressSync(
-                    [publicKey.toBuffer(), window.TOKEN_PROGRAM_ID.toBuffer(), mintPublicKey.toBuffer()],
-                    window.ASSOCIATED_TOKEN_PROGRAM_ID
-                )[0];
-
-                const tokenAccountInfo = await connection.getParsedAccountInfo(tokenAccount);
-                if (tokenAccountInfo?.value) {
-                    const tokenBalance = tokenAccountInfo.value.data.parsed.info.tokenAmount.uiAmount;
-                    const decimals = tokenAccountInfo.value.data.parsed.info.tokenAmount.decimals;
-                    $('layerBalancePill').textContent = `LAYER: ${tokenBalance.toFixed(decimals)}`;
-                } else {
-                    $('layerBalancePill').textContent = `LAYER: 0.000`;
+                // Fetch LAYER balance
+                const mintStr = $("layerMint").value.trim();
+                if (!mintStr) {
+                    $('layerBalancePill').textContent = 'LAYER: 0.000';
+                    return;
                 }
+                const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
+                
+                // Fetch decimals only once
+                if (layerDecimals === 9) {
+                    await fetchTokenInfo(connection, mintPublicKey);
+                }
+
+                const uiAmt = await fetchLayerBalance(connection, publicKey, mintPublicKey);
+                $('layerBalancePill').textContent = `LAYER: ${uiAmt.toFixed(Math.min(layerDecimals, 6))}`;
             } catch (e) {
                 sLog(`❌ Error fetching balances: ${e?.message || e}`);
             }
@@ -429,10 +455,8 @@
 
             let signature;
             if (wallet.signAndSendTransaction) {
-                // Use a more modern and direct method if available
                 ({ signature } = await wallet.signAndSendTransaction(transaction));
             } else {
-                // Fallback for older wallets
                 const signedTransaction = await wallet.signTransaction(transaction);
                 signature = await connection.sendRawTransaction(signedTransaction.serialize());
             }
@@ -446,15 +470,20 @@
             sLog(`✅ SOL transaction confirmed. TX: ${signature}`);
         }
         
-        // LAYER transfer function (Updated)
+        // LAYER transfer function (Updated with sender ATA check)
         async function sendRandomLAYER(connection, wallet, mintStr) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
             
-            // Use spl-token functions to handle ATA creation and transfers
             const fromAta = await splToken.getAssociatedTokenAddress(mintPublicKey, wallet.publicKey);
             const toAta = await splToken.getAssociatedTokenAddress(mintPublicKey, recipient);
             
+            // Check if sender's ATA exists
+            const fromAccountInfo = await connection.getAccountInfo(fromAta);
+            if (!fromAccountInfo) {
+                throw new Error('Sender\'s LAYER account (ATA) not found. Please fund this account first.');
+            }
+
             const transaction = new solanaWeb3.Transaction();
             
             // Check if recipient's ATA exists, and create if it doesn't
@@ -470,10 +499,7 @@
                 );
             }
             
-            // Get decimals from the mint account to ensure accurate amount
-            const mintInfo = await connection.getParsedAccountInfo(mintPublicKey);
-            const decimals = mintInfo.value.data.parsed.info.decimals;
-            const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, decimals));
+            const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, layerDecimals));
             
             // Add the transfer instruction
             transaction.add(
@@ -496,7 +522,7 @@
                 signature = await connection.sendRawTransaction(signedTx.serialize());
             }
 
-            sLog(`🪙 Sent ${(amount / Math.pow(10, decimals)).toFixed(6)} LAYER → ${recipient.toBase58()}`);
+            sLog(`🪙 Sent ${(amount / Math.pow(10, layerDecimals)).toFixed(6)} LAYER → ${recipient.toBase58()}`);
             
             await connection.confirmTransaction({
                 signature: signature,
