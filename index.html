@@ -6,18 +6,6 @@
     <title>Solayer Devnet — Faucet Bot & Random Sender</title>
     <!-- Solana Web3 library -->
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
-    <!-- SPL Token (IIFE build exposes global `splToken`) -->
-    <!-- Buffer polyfill (needed for SPL Token) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/buffer/6.0.3/buffer.min.js"></script>
-    <script>
-    window.Buffer = buffer.Buffer;
-    </script>
-    <!-- SPL Token -->
-    <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.js"></script>
-    <script>
-    // This variable is now accessible by all functions in this script block
-    const splToken = window.splToken;
-    </script>
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
@@ -161,7 +149,11 @@
         <p id="message-text"></p>
     </div>
 
-    <script>
+    <!-- The entire app's logic is now in a single module script -->
+    <script type="module">
+        // Import SPL token library as an ES module for reliability
+        import * as splToken from "https://unpkg.com/@solana/spl-token@0.4.6/lib/index.mjs";
+
         // Helper function to get an element by ID
         const $ = (id) => document.getElementById(id);
 
@@ -348,7 +340,6 @@
             return signature;
         }
 
-        // === THIS IS THE FUNCTION THAT WAS MOVED TO FIX THE SCOPING ERROR ===
         // Sends a random amount of LAYER tokens to a new random address
         async function sendRandomLAYER(connection, wallet, mintStr) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
