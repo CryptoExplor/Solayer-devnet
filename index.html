@@ -9,12 +9,8 @@
     <!-- SPL Token (IIFE build exposes global `splToken`) -->
     <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
     <!-- Mnemonic → seed (browser build exposes global `bip39`) -->
-    <script type="module">
-        import * as bip39 from 'https://cdn.jsdelivr.net/npm/bip39@3.1.0/index.js';
-        import * as ed25519HDKey from 'https://cdn.jsdelivr.net/npm/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js';
-        window.bip39 = bip39;
-        window.ed25519HDKey = ed25519HDKey;
-    </script>
+    <script src="https://unpkg.com/bip39@3.1.0/dist/bip39.js"></script>
+    <script src="https://unpkg.com/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js"></script>
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
@@ -266,21 +262,17 @@
 
         // Derives a Solana Keypair from a BIP39 mnemonic phrase
         async function deriveKeypairFromMnemonic(mnemonic, index = 0) {
-            // No longer need to wait since the new module loads reliably
             try {
                 // Use the standard SLIP-0010 derivation path (m/44'/501'/{index}'/0')
-                if (window.bip39 && window.ed25519HDKey) {
-                    const seed = await window.bip39.mnemonicToSeed(mnemonic);
-                    const path = `m/44'/501'/${index}'/0'`;
-                    const { key } = window.ed25519HDKey.derivePath(path, seed.toString('hex'));
-                    return solanaWeb3.Keypair.fromSeed(new Uint8Array(key));
-                }
+                const seed = bip39.mnemonicToSeedSync(mnemonic);
+                const path = `m/44'/501'/${index}'/0'`;
+                const { key } = ed25519HDKey.derivePath(path, seed.toString('hex'));
+                return solanaWeb3.Keypair.fromSeed(new Uint8Array(key));
             } catch (e) {
                 sLog(`Derivation library error: ${e?.message || e}. Falling back to a non-HD safe method.`);
+                const seed = bip39.mnemonicToSeedSync(mnemonic);
+                return solanaWeb3.Keypair.fromSeed(new Uint8Array(seed).slice(0, 32));
             }
-            // Fallback for environments where HD derivation is not supported
-            const seed = await window.bip39.mnemonicToSeed(mnemonic);
-            return solanaWeb3.Keypair.fromSeed(new Uint8Array(seed).slice(0, 32));
         }
 
         // Sends a random amount of SOL to a new random address
