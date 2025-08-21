@@ -6,8 +6,6 @@
     <title>Solayer Devnet — Faucet Bot & Random Sender</title>
     <!-- Solana Web3 library -->
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
-    <!-- SPL Token library -->
-    <script src="https://unpkg.com/@solana/spl-token@0.4.0/lib/index.iife.js"></script>
     <!-- Buffer polyfill -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/buffer/6.0.3/buffer.min.js"></script>
     <script>
@@ -181,10 +179,11 @@
         let senderStats = { sent: 0, ok: 0, err: 0 };
         let layerDecimals = 9; // Default, will be updated from mint info
 
+        // --- Program ID constants (No more spl-token dependency) ---
+        const TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc');
+        const ASSOCIATED_TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+
         window.onload = function() {
-            // Assign program IDs using library constants with hardcoded fallbacks
-            window.TOKEN_PROGRAM_ID = (window.splToken && window.splToken.TOKEN_PROGRAM_ID) || new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-            window.ASSOCIATED_TOKEN_PROGRAM_ID = (window.splToken && window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID) || new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
             setupEventListeners();
         };
 
@@ -365,42 +364,60 @@
             }
         }
         
-        // Fetch token info and update the cached decimals
-        async function fetchTokenInfo(connection, mint) {
-            try {
-                const info = await connection.getParsedAccountInfo(mint);
-                const v = info && info.value;
-                if (v && v.data && typeof v.data === 'object' && v.data.parsed && v.data.parsed.info) {
-                    const parsed = v.data.parsed;
-                    if (parsed.info && typeof parsed.info.decimals === 'number') {
-                        layerDecimals = parsed.info.decimals;
-                        sLog(`🪙 Fetched token decimals for LAYER: ${layerDecimals}`);
-                        return;
-                    }
-                }
-                sLog('⚠️ Could not fetch token decimals (using default 9).');
-            } catch (e) {
-                sLog(`❌ Error fetching token info: ${e?.message || e}`);
-            }
+        // --- Manual SPL Token Functions ---
+        function getAssociatedTokenAddress(mint, owner) {
+            const [addr] = solanaWeb3.PublicKey.findProgramAddressSync(
+                [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+                ASSOCIATED_TOKEN_PROGRAM_ID
+            );
+            return addr;
+        }
+
+        function createAssociatedTokenAccountInstruction(payer, ata, owner, mint) {
+            const keys = [
+                { pubkey: payer, isSigner: true, isWritable: true },
+                { pubkey: ata, isSigner: false, isWritable: true },
+                { pubkey: owner, isSigner: false, isWritable: false },
+                { pubkey: mint, isSigner: false, isWritable: false },
+                { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+            ];
+            return new solanaWeb3.TransactionInstruction({ keys, programId: ASSOCIATED_TOKEN_PROGRAM_ID, data: Buffer.alloc(0) });
         }
         
-        // Fetch token balance via getParsedTokenAccountsByOwner
+        function createTransferCheckedInstruction(source, destination, mint, owner, amount, decimals) {
+            // SPL Token instruction: TransferChecked (index 12)
+            const data = Buffer.alloc(1 + 8 + 1);
+            data.writeUInt8(12, 0);
+            data.writeBigUInt64LE(BigInt(amount), 1);
+            data.writeUInt8(decimals, 9);
+            const keys = [
+                { pubkey: source, isSigner: false, isWritable: true },
+                { pubkey: mint, isSigner: false, isWritable: false },
+                { pubkey: destination, isSigner: false, isWritable: true },
+                { pubkey: owner, isSigner: true, isWritable: false },
+            ];
+            return new solanaWeb3.TransactionInstruction({ keys, programId: TOKEN_PROGRAM_ID, data });
+        }
+        // --- End Manual SPL Token Functions ---
+
+        // Robust balance fetcher
         async function fetchLayerBalance(connection, ownerPubkey, mintPubkey) {
             try {
-                const resp = await connection.getParsedTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey });
-                if (resp && resp.value && resp.value.length > 0) {
-                    const acct = resp.value[0];
-                    const data = acct && acct.account && acct.account.data;
-                    const parsed = data && data.parsed;
-                    const info = parsed && parsed.info;
-                    const tokenAmount = info && info.tokenAmount;
-                    if (tokenAmount && typeof tokenAmount.uiAmount === 'number') {
-                        return tokenAmount.uiAmount;
+                const parsed = await connection.getParsedTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey }, { commitment: 'confirmed' });
+                if (parsed?.value?.length) {
+                    let total = 0;
+                    for (const it of parsed.value) {
+                        const ta = it?.account?.data?.parsed?.info?.tokenAmount;
+                        if (ta) {
+                            if (typeof ta.uiAmount === 'number') total += ta.uiAmount;
+                            else if (typeof ta.amount === 'string' && typeof ta.decimals === 'number') {
+                                total += Number(ta.amount) / Math.pow(10, ta.decimals);
+                            }
+                        }
                     }
-                    if (tokenAmount && typeof tokenAmount.amount === 'string' && typeof tokenAmount.decimals === 'number') {
-                        const amt = Number(tokenAmount.amount) / Math.pow(10, tokenAmount.decimals);
-                        return amt;
-                    }
+                    return total;
                 }
                 return 0;
             } catch (e) {
@@ -413,8 +430,8 @@
         async function fetchBalances(connection, publicKey) {
             try {
                 // Fetch SOL balance
-                const solBalance = await connection.getBalance(publicKey);
-                $('solBalancePill').textContent = `SOL: ${(solBalance / solanaWeb3.LAMPORTS_PER_SOL).toFixed(4)}`;
+                const solLamports = await connection.getBalance(publicKey);
+                $('solBalancePill').textContent = `SOL: ${(solLamports / solanaWeb3.LAMPORTS_PER_SOL).toFixed(4)}`;
 
                 // Fetch LAYER balance
                 const mintStr = $("layerMint").value.trim();
@@ -422,15 +439,22 @@
                     $('layerBalancePill').textContent = 'LAYER: 0.000';
                     return;
                 }
-                const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
+                const mint = new solanaWeb3.PublicKey(mintStr);
                 
-                // Fetch decimals only once
+                // Fetch decimals once; guard response shape
                 if (layerDecimals === 9) {
-                    await fetchTokenInfo(connection, mintPublicKey);
+                    try {
+                        const info = await connection.getParsedAccountInfo(mint);
+                        const v = info?.value;
+                        const dec = v?.data && typeof v.data === 'object' && v.data.parsed?.info?.decimals;
+                        if (typeof dec === 'number') layerDecimals = dec;
+                    } catch (e) {
+                        sLog(`⚠️ Could not fetch decimals, using default 9: ${e?.message || e}`);
+                    }
                 }
-
-                const uiAmt = await fetchLayerBalance(connection, publicKey, mintPublicKey);
-                $('layerBalancePill').textContent = `LAYER: ${uiAmt.toFixed(Math.min(layerDecimals, 6))}`;
+                const uiAmt = await fetchLayerBalance(connection, publicKey, mint);
+                const decimalsForUI = Number.isFinite(layerDecimals) ? Math.min(layerDecimals, 6) : 6;
+                $('layerBalancePill').textContent = `LAYER: ${uiAmt.toFixed(decimalsForUI)}`;
             } catch (e) {
                 sLog(`❌ Error fetching balances: ${e?.message || e}`);
             }
@@ -470,18 +494,19 @@
             sLog(`✅ SOL transaction confirmed. TX: ${signature}`);
         }
         
-        // LAYER transfer function (Updated with sender ATA check)
+        // LAYER transfer function (Updated with manual instructions)
         async function sendRandomLAYER(connection, wallet, mintStr) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
             
-            const fromAta = await splToken.getAssociatedTokenAddress(mintPublicKey, wallet.publicKey);
-            const toAta = await splToken.getAssociatedTokenAddress(mintPublicKey, recipient);
+            // Derive ATAs
+            const fromAta = getAssociatedTokenAddress(mintPublicKey, wallet.publicKey);
+            const toAta = getAssociatedTokenAddress(mintPublicKey, recipient);
             
             // Check if sender's ATA exists
             const fromAccountInfo = await connection.getAccountInfo(fromAta);
             if (!fromAccountInfo) {
-                throw new Error('Sender\'s LAYER account (ATA) not found. Please fund this account first.');
+                throw new Error('Sender\'s LAYER ATA not found. Receive this token first or create the ATA and fund it.');
             }
 
             const transaction = new solanaWeb3.Transaction();
@@ -490,12 +515,7 @@
             const toAccountInfo = await connection.getAccountInfo(toAta);
             if (!toAccountInfo) {
                 transaction.add(
-                    splToken.createAssociatedTokenAccountInstruction(
-                        wallet.publicKey,
-                        toAta,
-                        recipient,
-                        mintPublicKey
-                    )
+                    createAssociatedTokenAccountInstruction(wallet.publicKey, toAta, recipient, mintPublicKey)
                 );
             }
             
@@ -503,12 +523,7 @@
             
             // Add the transfer instruction
             transaction.add(
-                splToken.createTransferInstruction(
-                    fromAta,
-                    toAta,
-                    wallet.publicKey,
-                    amount
-                )
+                createTransferCheckedInstruction(fromAta, toAta, mintPublicKey, wallet.publicKey, amount, layerDecimals)
             );
             
             transaction.feePayer = wallet.publicKey;
