@@ -13,7 +13,8 @@
     window.Buffer = buffer.Buffer;
     </script>
     <!-- SPL Token -->
-    <script src="https://unpkg.com/@solana/spl-token@0.4.13/lib/index.iife.js"></script>
+    <!-- Downgraded to a version compatible with the Token class for IIFE build -->
+    <script src="https://unpkg.com/@solana/spl-token@0.3.5/lib/index.iife.js"></script>
     <script>
     // This variable is now accessible by all functions in this script block
     const splToken = window.splToken;
@@ -349,32 +350,40 @@
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
-            const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
+            // Use the older Token class API which is available in the IIFE build
+            const token = new splToken.Token(
                 connection,
-                wallet,
                 mintPublicKey,
+                splToken.TOKEN_PROGRAM_ID,
                 wallet.publicKey
             );
+            
+            // Get or create the associated token accounts for sender and recipient
+            const fromAta = await token.getOrCreateAssociatedAccountInfo(wallet.publicKey);
+            const toAta = await token.getOrCreateAssociatedAccountInfo(recipient);
 
-            const toAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection,
-                wallet,
-                mintPublicKey,
-                recipient
-            );
-
+            // Amount in smallest unit (assume 9 decimals)
             const decimals = fromAta.amount.decimals || 9;
             const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, decimals));
 
-            const signature = await splToken.transfer(
-                connection,
-                wallet,
-                fromAta.address,
-                toAta.address,
-                wallet.publicKey,
-                amount,
-                { decimals }
+            // Create the transfer instruction
+            const transaction = new solanaWeb3.Transaction().add(
+                splToken.Token.createTransferInstruction(
+                    splToken.TOKEN_PROGRAM_ID,
+                    fromAta.address,
+                    toAta.address,
+                    wallet.publicKey,
+                    [],
+                    amount
+                )
             );
+            
+            // Set fee payer and blockhash
+            transaction.feePayer = wallet.publicKey;
+            transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+
+            // Sign and send the transaction
+            const { signature } = await wallet.signAndSendTransaction(transaction);
 
             sLog(`🪙 Sent ${(amount / Math.pow(10, decimals)).toFixed(6)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
