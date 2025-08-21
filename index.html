@@ -128,6 +128,7 @@
             <div class="row" style="margin-top:8px">
                 <button id="startFaucet">▶ Start Faucet Loop</button>
                 <button id="stopFaucet" disabled>⏹ Stop</button>
+                <button id="clearFaucetLog">🧹 Clear Log</button>
             </div>
             <div class="balance-pills">
                 <span class="pill" id="faucetTotal">Total: 0</span>
@@ -243,10 +244,12 @@
             // Faucet Buttons
             const startFaucetBtn = $("startFaucet");
             const stopFaucetBtn = $("stopFaucet");
+            const clearFaucetBtn = $("clearFaucetLog");
             const faucetModeSelect = $("faucetMode");
 
             startFaucetBtn.onclick = () => { if (!faucetRun) faucetLoop(); };
             stopFaucetBtn.onclick = () => { faucetRun = false; };
+            clearFaucetBtn.onclick = () => { $("logFaucet").textContent = ''; };
             faucetModeSelect.onchange = handleFaucetModeChange;
         
             // Sender Buttons
@@ -363,28 +366,16 @@
             fLog(`Connecting to RPC → ${rpc}`);
             const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
             
-            let addressQueue = [...addresses]; // Use a copy to manage the queue
-            if (faucetMode === 'per-wallet') {
-                // Shuffle addresses for fair distribution
-                for (let i = addressQueue.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [addressQueue[i], addressQueue[j]] = [addressQueue[j], addressQueue[i]];
-                }
-            }
-            
             while (faucetRun) {
                 if (faucetMode === 'total' && faucetStats.ok >= claimLimit) {
                     fLog(`✅ Total claim limit of ${claimLimit} reached. Stopping loop.`);
                     faucetRun = false;
                     break;
                 }
-                if (addressQueue.length === 0) {
-                    fLog('All wallets have reached their claim limit. Stopping loop.');
-                    faucetRun = false;
-                    break;
-                }
                 
-                const addr = addressQueue[0];
+                // Pick a random address from the list for all modes
+                const randomIndex = Math.floor(Math.random() * addresses.length);
+                const addr = addresses[randomIndex];
                 const pk = new solanaWeb3.PublicKey(addr);
                 
                 // Initialize counter for this address if it doesn't exist
@@ -393,10 +384,20 @@
                 }
                 
                 try {
+                    // Check if per-wallet claim limit is reached
                     if (faucetMode === 'per-wallet' && claimsPerWallet[addr] >= claimLimit) {
-                        fLog(`Skipping ${addr}. Claim limit of ${claimLimit} reached.`);
-                        addressQueue.shift();
-                        continue;
+                         // Find an address that hasn't reached its limit
+                         const availableAddrs = addresses.filter(a => claimsPerWallet[a] < claimLimit);
+                         if (availableAddrs.length === 0) {
+                            fLog('All wallets have reached their claim limit. Stopping loop.');
+                            faucetRun = false;
+                            break;
+                         }
+                         // Pick a random address from the remaining ones
+                         const nextAddr = availableAddrs[Math.floor(Math.random() * availableAddrs.length)];
+                         fLog(`Skipping ${addr}. Trying next address: ${nextAddr}`);
+                         await sleep(1000); // Short delay to prevent hammering
+                         continue;
                     }
                     
                     faucetStats.total++;
@@ -421,12 +422,6 @@
                     fLog(`❌ Error on address ${addr}: ${e?.message || e}`);
                 }
                 
-                // Move the processed address to the end of the queue
-                if (faucetMode !== 'per-wallet' || (faucetMode === 'per-wallet' && claimsPerWallet[addr] < claimLimit)) {
-                    const processedAddr = addressQueue.shift();
-                    addressQueue.push(processedAddr);
-                }
-
                 const delay = Math.floor(rand(1000, 5000));
                 fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
                 if (faucetRun) {
