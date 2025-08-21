@@ -5,10 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Solayer Devnet — Faucet Bot & Random Sender</title>
     <!-- Solana Web3 library -->
-    <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
     <!-- SPL Token (IIFE build exposes global `splToken`) -->
-    <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
-    
+    <!-- Buffer polyfill (needed for SPL Token) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/buffer/6.0.3/buffer.min.js"></script>
+    <script>
+    window.Buffer = buffer.Buffer;
+    </script>
+    <!-- SPL Token -->
+    <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.js"></script>
+    <script>
+    const splToken = window.splToken;
+    </script>
+</head>
+
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
@@ -326,39 +336,41 @@
             const amount = rand(0.0001, 0.005);
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
-            // Fetch the mint account to get the correct decimals
+            // Fetch mint info for decimals
             const mintInfo = await splToken.getMint(connection, mintPublicKey);
             const decimals = mintInfo.decimals;
             const amountInLamports = Math.floor(amount * Math.pow(10, decimals));
 
-            // Get or create the associated token accounts for both sender and recipient
-            const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection, wallet.publicKey, mintPublicKey, wallet.publicKey
-            );
-            const toAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection, wallet.publicKey, mintPublicKey, recipient
+            // Get ATA addresses only (no creation here)
+            const fromAta = await splToken.getAssociatedTokenAddress(mintPublicKey, wallet.publicKey);
+            const toAta = await splToken.getAssociatedTokenAddress(mintPublicKey, recipient);
+
+            // Build ATA creation instruction for recipient
+            const ataIx = splToken.createAssociatedTokenAccountInstruction(
+                wallet.publicKey,   // payer
+                toAta,              // ATA address
+                recipient,          // token owner
+                mintPublicKey       // token mint
             );
 
-            // Build the transaction
-            const transaction = new solanaWeb3.Transaction().add(
-                splToken.createTransferInstruction(
-                    fromAta.address,
-                    toAta.address,
-                    wallet.publicKey,
-                    amountInLamports
-                )
+            // Build token transfer instruction
+            const transferIx = splToken.createTransferInstruction(
+                fromAta,
+                toAta,
+                wallet.publicKey,
+                amountInLamports
             );
-            
-            // Get the recent blockhash before signing and sending
+
+            const transaction = new solanaWeb3.Transaction().add(ataIx, transferIx);
+
             transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
             transaction.feePayer = wallet.publicKey;
 
-            // Sign and send the transaction using the wallet provider
-            const signature = await wallet.signAndSendTransaction(transaction);
+            // Ask Phantom/Solflare to sign & send
+            const { signature } = await wallet.signAndSendTransaction(transaction);
             sLog(`🪙 Sent ${amount.toFixed(decimals)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
-
         // The main sender loop
         async function senderLoop() {
             const rpc = $("rpcSender").value.trim();
