@@ -316,7 +316,6 @@
                     walletProvider = solana;
                     updateConnectionStatus(true, response.publicKey);
                     sLog(`Connected to wallet: ${response.publicKey.toBase58()}`);
-                    console.log("Wallet Provider:", walletProvider); // Debugging tip 4
                 } catch (e) {
                     showMessage(`Error connecting to wallet: ${e?.message || e}`);
                     sLog(`❌ Error connecting to wallet: ${e?.message || e}`);
@@ -349,24 +348,17 @@
             return signature;
         }
 
-        // === THIS IS THE FUNCTION THAT WAS MOVED TO FIX THE SCOPING ERROR ===
         // Sends a random amount of LAYER tokens to a new random address
         async function sendRandomLAYER(connection, wallet, mintStr) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const amount = rand(0.0001, 0.005);
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
-            // --- FIX APPLIED HERE ---
-            // In spl-token@0.4.6, the `getMint` function is part of a `Token` class instance.
-            // The old `splToken.getMint` function is not available in this version.
-            // We create a Token instance and then call `getMintInfo()` on it.
-            const token = new splToken.Token(
-                connection,
-                mintPublicKey,
-                splToken.TOKEN_PROGRAM_ID,
-                wallet // payer
-            );
-            const mintInfo = await token.getMintInfo();
+            // --- FIX APPLIED HERE ---
+            // The IIFE build of spl-token v0.4.6 exposes standalone functions directly.
+            // We no longer need to create a `new splToken.Token` instance.
+            // We can call `splToken.getMint` directly to get the mint's info.
+            const mintInfo = await splToken.getMint(connection, mintPublicKey);
             const decimals = mintInfo.decimals;
             const amountInLamports = Math.floor(amount * Math.pow(10, decimals));
 
@@ -383,10 +375,10 @@
                 // If not, add an instruction to create the ATA first
                 transaction.add(
                     splToken.createAssociatedTokenAccountInstruction(
-                        wallet.publicKey,    // payer
-                        toAta,               // new ATA
-                        recipient,           // token owner
-                        mintPublicKey        // token mint
+                        wallet.publicKey,   // payer
+                        toAta,              // new ATA
+                        recipient,          // token owner
+                        mintPublicKey       // token mint
                     )
                 );
             }
@@ -459,7 +451,7 @@
                     senderStats.err++;
                     updateS();
                     sLog(`❌ Send error: ${e?.message || e}`);
-                    console.error(e); // Debugging tip 4
+                    console.error(e);
                 }
                 
                 // Wait for a random delay before the next transaction
