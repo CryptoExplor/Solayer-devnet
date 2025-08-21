@@ -8,9 +8,6 @@
     <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
     <!-- SPL Token (IIFE build exposes global `splToken`) -->
     <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
-    <!-- Mnemonic → seed (browser build exposes global `bip39`) -->
-    <script src="https://unpkg.com/bip39@3.1.0/dist/bip39.js"></script>
-    <script src="https://unpkg.com/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js"></script>
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
@@ -21,7 +18,7 @@
         .tab{padding:8px 12px;border:1px solid #25315a;background:#0e1633;border-radius:10px;cursor:pointer;transition:background-color 0.3s, border-color 0.3s;}
         .tab.active{background:linear-gradient(135deg,#4169e1,#29c6ff);color:#001225;border:0}
         .card{background:linear-gradient(180deg,#121a36,#0e152b);border:1px solid #1f2745;border-radius:14px;padding:14px}
-        textarea,input,button{width:100%;border-radius:10px;border:1px solid #20305e;background:#0c1430;color:var(--text);padding:10px;outline:none;}
+        textarea,input,button,select{width:100%;border-radius:10px;border:1px solid #20305e;background:#0c1430;color:var(--text);padding:10px;outline:none;}
         button{cursor:pointer;font-weight:700;transition:background-color 0.3s;}
         .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
         .muted{color:#9fb0d6}
@@ -55,6 +52,15 @@
         #message-box p {
             margin: 0;
             font-weight: bold;
+        }
+        .connection-pill {
+            margin-top: 12px;
+            text-align: center;
+            font-weight: bold;
+            color: var(--err);
+        }
+        .connection-pill.connected {
+            color: var(--ok);
         }
     </style>
 </head>
@@ -106,22 +112,12 @@
                     <input id="layerMint" value="LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc" />
                 </div>
             </div>
-            <label style="margin-top:8px">Seed phrase (mnemonic) — Devnet only ⚠️</label>
-            <textarea id="mnemonic" rows="3" placeholder="abandon abandon abandon ... (24 words)"></textarea>
-            <div class="row" style="margin-top:8px">
-                <div>
-                    <label>Derivation index</label>
-                    <input id="derivIndex" type="number" min="0" value="0" />
-                </div>
-                <div>
-                    <label>Mode</label>
-                    <select id="modeSender">
-                        <option value="both" selected>SOL or LAYER (random)</option>
-                        <option value="sol">SOL only</option>
-                        <option value="layer">LAYER only</option>
-                    </select>
-                </div>
+            <div style="margin-top:8px">
+                <button id="connectWalletBtn">🔗 Connect Wallet</button>
+                <div id="connectionStatus" class="connection-pill">Not Connected</div>
             </div>
+            <label style="margin-top:8px">Connected Address</label>
+            <input id="connectedAddress" readonly style="color: var(--ok);"/>
             <div class="row" style="margin-top:8px">
                 <button id="startSender">▶ Start Auto Sender</button>
                 <button id="stopSender">⏹ Stop</button>
@@ -244,6 +240,7 @@
         // ===== Auto Sender (SOL & LAYER) Logic =====
         let senderRun = false;
         let senderStats = { sent: 0, ok: 0, err: 0 };
+        let walletProvider = null;
 
         // Logs messages to the Sender section
         function sLog(msg) {
@@ -259,40 +256,65 @@
             $("senderOk").textContent = `OK: ${senderStats.ok}`;
             $("senderErr").textContent = `Err: ${senderStats.err}`;
         }
-
-        // Derives a Solana Keypair from a BIP39 mnemonic phrase
-        async function deriveKeypairFromMnemonic(mnemonic, index = 0) {
-            try {
-                // Use the standard SLIP-0010 derivation path (m/44'/501'/{index}'/0')
-                const seed = bip39.mnemonicToSeedSync(mnemonic);
-                const path = `m/44'/501'/${index}'/0'`;
-                const { key } = ed25519HDKey.derivePath(path, seed.toString('hex'));
-                return solanaWeb3.Keypair.fromSeed(new Uint8Array(key));
-            } catch (e) {
-                sLog(`Derivation library error: ${e?.message || e}. Falling back to a non-HD safe method.`);
-                const seed = bip39.mnemonicToSeedSync(mnemonic);
-                return solanaWeb3.Keypair.fromSeed(new Uint8Array(seed).slice(0, 32));
+        
+        // Updates wallet connection status
+        function updateConnectionStatus(isConnected, publicKey = null) {
+            const statusEl = $('connectionStatus');
+            const addressEl = $('connectedAddress');
+            if (isConnected) {
+                statusEl.textContent = 'Connected';
+                statusEl.classList.add('connected');
+                addressEl.value = publicKey.toBase58();
+            } else {
+                statusEl.textContent = 'Not Connected';
+                statusEl.classList.remove('connected');
+                addressEl.value = '';
+            }
+        }
+        
+        // Function to connect to a browser wallet
+        async function connectWallet() {
+            if ("solana" in window) {
+                try {
+                    const solana = window.solana;
+                    const response = await solana.connect();
+                    walletProvider = solana;
+                    updateConnectionStatus(true, response.publicKey);
+                    sLog(`Connected to wallet: ${response.publicKey.toBase58()}`);
+                } catch (e) {
+                    showMessage(`Error connecting to wallet: ${e?.message || e}`);
+                    sLog(`❌ Error connecting to wallet: ${e?.message || e}`);
+                }
+            } else {
+                showMessage("Solana wallet not found. Please install Phantom or Solflare.");
+                sLog("❌ Solana wallet not found. Please install Phantom or Solflare.");
             }
         }
 
         // Sends a random amount of SOL to a new random address
-        async function sendRandomSOL(connection, fromKeypair) {
+        async function sendRandomSOL(connection, wallet) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const amount = rand(0.001, 0.05); // Random amount between 0.001 and 0.05 SOL
             const transaction = new solanaWeb3.Transaction().add(
                 solanaWeb3.SystemProgram.transfer({
-                    fromPubkey: fromKeypair.publicKey,
+                    fromPubkey: wallet.publicKey,
                     toPubkey: recipient,
                     lamports: Math.floor(amount * 1e9) // Convert SOL to lamports
                 })
             );
-            const signature = await solanaWeb3.sendAndConfirmTransaction(connection, transaction, [fromKeypair]);
+
+            // Get the recent blockhash before signing and sending
+            transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+            transaction.feePayer = wallet.publicKey;
+            
+            // Sign and send the transaction using the wallet provider
+            const signature = await wallet.signAndSendTransaction(transaction);
             sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
 
         // Sends a random amount of LAYER tokens to a new random address
-        async function sendRandomLAYER(connection, fromKeypair, mintStr) {
+        async function sendRandomLAYER(connection, wallet, mintStr) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const amount = rand(0.0001, 0.005);
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
@@ -304,21 +326,28 @@
 
             // Get or create the associated token accounts for both sender and recipient
             const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection, fromKeypair, mintPublicKey, fromKeypair.publicKey
+                connection, wallet.publicKey, mintPublicKey, wallet.publicKey
             );
             const toAta = await splToken.getOrCreateAssociatedTokenAccount(
-                connection, fromKeypair, mintPublicKey, recipient
+                connection, wallet.publicKey, mintPublicKey, recipient
             );
 
-            // Send the tokens
-            const signature = await splToken.transfer(
-                connection,
-                fromKeypair,
-                fromAta.address,
-                toAta.address,
-                fromKeypair.publicKey,
-                amountInLamports
+            // Build the transaction
+            const transaction = new solanaWeb3.Transaction().add(
+                splToken.createTransferInstruction(
+                    fromAta.address,
+                    toAta.address,
+                    wallet.publicKey,
+                    amountInLamports
+                )
             );
+            
+            // Get the recent blockhash before signing and sending
+            transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+            transaction.feePayer = wallet.publicKey;
+
+            // Sign and send the transaction using the wallet provider
+            const signature = await wallet.signAndSendTransaction(transaction);
             sLog(`🪙 Sent ${amount.toFixed(decimals)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
@@ -326,40 +355,23 @@
         // The main sender loop
         async function senderLoop() {
             const rpc = $("rpcSender").value.trim();
-            const mnemonic = $("mnemonic").value.trim();
-            const index = parseInt($("derivIndex").value || '0');
             const mode = $("modeSender").value;
             const mint = $("layerMint").value.trim();
 
-            if (!mnemonic) {
-                showMessage('Please enter a seed phrase.');
+            if (!walletProvider || !walletProvider.publicKey) {
+                showMessage('Please connect your wallet first.');
                 return;
             }
 
-            // Connect and derive keypair outside the loop for efficiency
             const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
-            let wallet;
-            try {
-                wallet = await deriveKeypairFromMnemonic(mnemonic, index);
-            } catch (e) {
-                showMessage(`Error deriving wallet: ${e.message}`);
-                sLog(`❌ Error deriving wallet: ${e.message}`);
-                return;
-            }
-            
 
-            if (!wallet) {
-                showMessage('Failed to derive wallet from mnemonic. Please check the seed phrase.');
-                return;
-            }
-
-            sLog(`Loaded wallet: ${wallet.publicKey.toBase58()} (index ${index})`);
+            sLog(`Connected wallet: ${walletProvider.publicKey.toBase58()}`);
 
             senderRun = true;
             while (senderRun) {
                 try {
                     // Check the balance before attempting any transaction
-                    const balance = await connection.getBalance(wallet.publicKey);
+                    const balance = await connection.getBalance(walletProvider.publicKey);
                     const balanceSol = balance / solanaWeb3.LAMPORTS_PER_SOL;
                     sLog(`Current balance: ${balanceSol.toFixed(4)} SOL`);
 
@@ -376,9 +388,9 @@
                     // Randomly choose between SOL and LAYER if the mode is 'both'
                     const choice = mode === 'both' ? (Math.random() < 0.5 ? 'sol' : 'layer') : mode;
                     if (choice === 'sol') {
-                        await sendRandomSOL(connection, wallet);
+                        await sendRandomSOL(connection, walletProvider);
                     } else {
-                        await sendRandomLAYER(connection, wallet, mint);
+                        await sendRandomLAYER(connection, walletProvider, mint);
                     }
                     senderStats.ok++;
                     updateS();
@@ -396,8 +408,19 @@
             sLog('🛑 Sender loop stopped.');
         }
 
+        $("connectWalletBtn").onclick = connectWallet;
         $("startSender").onclick = () => { if (!senderRun) senderLoop(); };
         $("stopSender").onclick = () => { senderRun = false; };
+
+        // Handle wallet disconnection
+        if ("solana" in window) {
+            window.solana.on('disconnect', () => {
+                sLog("Wallet disconnected.");
+                senderRun = false;
+                walletProvider = null;
+                updateConnectionStatus(false);
+            });
+        }
     </script>
 </body>
 </html>
