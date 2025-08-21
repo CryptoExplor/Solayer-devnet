@@ -349,40 +349,34 @@
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const mintPublicKey = new solanaWeb3.PublicKey(mintStr);
 
-            // Create a Token object
-            const token = new splToken.Token(
+            const fromAta = await splToken.getOrCreateAssociatedTokenAccount(
                 connection,
+                wallet,
                 mintPublicKey,
-                splToken.TOKEN_PROGRAM_ID,
-                wallet.publicKey // Payer for instructions
+                wallet.publicKey
             );
 
-            // From (sender) associated account
-            const fromAta = await token.getOrCreateAssociatedAccountInfo(wallet.publicKey);
-
-            // To (recipient) associated account
-            const toAta = await token.getOrCreateAssociatedAccountInfo(recipient);
-
-            // Amount in decimals, using a default of 9 if not available
-            const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, fromAta.amount._decimals || 9));
-
-            // Transfer instruction
-            const tx = new solanaWeb3.Transaction().add(
-                splToken.Token.createTransferInstruction(
-                    splToken.TOKEN_PROGRAM_ID,
-                    fromAta.address,
-                    toAta.address,
-                    wallet.publicKey,
-                    [],
-                    amount
-                )
+            const toAta = await splToken.getOrCreateAssociatedTokenAccount(
+                connection,
+                wallet,
+                mintPublicKey,
+                recipient
             );
 
-            tx.feePayer = wallet.publicKey;
-            tx.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+            const decimals = fromAta.amount.decimals || 9;
+            const amount = Math.floor(rand(0.0001, 0.005) * Math.pow(10, decimals));
 
-            const { signature } = await wallet.signAndSendTransaction(tx);
-            sLog(`🪙 Sent ${(amount / Math.pow(10, fromAta.amount._decimals || 9)).toFixed(6)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
+            const signature = await splToken.transfer(
+                connection,
+                wallet,
+                fromAta.address,
+                toAta.address,
+                wallet.publicKey,
+                amount,
+                { decimals }
+            );
+
+            sLog(`🪙 Sent ${(amount / Math.pow(10, decimals)).toFixed(6)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
 
