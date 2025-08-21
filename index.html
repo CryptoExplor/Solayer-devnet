@@ -4,15 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Solayer Devnet — Faucet Bot & Random Sender</title>
-    <link rel="preconnect" href="https://unpkg.com">
     <!-- Solana Web3 library -->
     <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
     <!-- SPL Token (IIFE build exposes global `splToken`) -->
     <script src="https://unpkg.com/@solana/spl-token@0.4.6/lib/index.iife.min.js"></script>
     <!-- Mnemonic → seed (browser build exposes global `bip39`) -->
-    <script src="https://unpkg.com/bip39@3.1.0/browser/bip39.min.js"></script>
-    <!-- Ed25519 HD derivation (tries to expose `ed25519HDKey`) -->
-    <script src="https://unpkg.com/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js"></script>
+    <script type="module">
+        import * as bip39 from 'https://cdn.jsdelivr.net/npm/bip39@3.1.0/index.js';
+        import * as ed25519HDKey from 'https://cdn.jsdelivr.net/npm/ed25519-hd-key@1.3.0/dist/ed25519-hd-key.js';
+        window.bip39 = bip39;
+        window.ed25519HDKey = ed25519HDKey;
+    </script>
     <style>
         :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
         *{box-sizing:border-box}
@@ -57,29 +59,6 @@
         #message-box p {
             margin: 0;
             font-weight: bold;
-        }
-        .chat-container {
-            display: flex;
-            flex-direction: column;
-            height: 360px;
-            border: 1px solid #1a2349;
-            border-radius: 12px;
-            background: #091130;
-            padding: 10px;
-        }
-        #chat-log {
-            flex-grow: 1;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            margin-bottom: 10px;
-        }
-        #chat-input-row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        #chat-input {
-            flex-grow: 1;
         }
     </style>
 </head>
@@ -287,19 +266,7 @@
 
         // Derives a Solana Keypair from a BIP39 mnemonic phrase
         async function deriveKeypairFromMnemonic(mnemonic, index = 0) {
-            // Wait for the bip39 library to load
-            let attempts = 0;
-            const maxAttempts = 5;
-            while (!window.bip39 && attempts < maxAttempts) {
-                sLog(`bip39 library not ready, waiting... (Attempt ${attempts + 1}/${maxAttempts})`);
-                await sleep(500);
-                attempts++;
-            }
-            
-            if (!window.bip39) {
-                throw new Error("bip39 library failed to load.");
-            }
-            
+            // No longer need to wait since the new module loads reliably
             try {
                 // Use the standard SLIP-0010 derivation path (m/44'/501'/{index}'/0')
                 if (window.bip39 && window.ed25519HDKey) {
