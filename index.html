@@ -316,6 +316,7 @@
                     walletProvider = solana;
                     updateConnectionStatus(true, response.publicKey);
                     sLog(`Connected to wallet: ${response.publicKey.toBase58()}`);
+                    console.log("Wallet Provider:", walletProvider); // Debugging tip 4
                 } catch (e) {
                     showMessage(`Error connecting to wallet: ${e?.message || e}`);
                     sLog(`❌ Error connecting to wallet: ${e?.message || e}`);
@@ -343,7 +344,7 @@
             transaction.feePayer = wallet.publicKey;
             
             // Sign and send the transaction using the wallet provider
-            const { signature } = await wallet.signAndSendTransaction(transaction);
+            const signature = await wallet.signAndSendTransaction(transaction);
             sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
@@ -396,7 +397,7 @@
             transaction.feePayer = wallet.publicKey;
 
             // Ask Phantom/Solflare to sign & send
-            const { signature } = await wallet.signAndSendTransaction(transaction);
+            const signature = await wallet.signAndSendTransaction(transaction);
             sLog(`🪙 Sent ${amount.toFixed(decimals)} LAYER → ${recipient.toBase58()} | TX: ${signature}`);
             return signature;
         }
@@ -449,6 +450,7 @@
                     senderStats.err++;
                     updateS();
                     sLog(`❌ Send error: ${e?.message || e}`);
+                    console.error(e); // Debugging tip 4
                 }
                 
                 // Wait for a random delay before the next transaction
