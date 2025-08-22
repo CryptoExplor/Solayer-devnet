@@ -14,13 +14,12 @@
         window.Buffer = buffer.Buffer;
     </script>
     <style>
-        :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b; --log-bg:#091130;}
-        .light-theme{--bg:#f2f5f9;--panel:#fff;--muted:#6b7a99;--text:#111831;--accent:#246ce0;--ok:#1f805a;--warn:#d9981e;--err:#cc3434; --log-bg:#e9ecef;}
+        :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--success:#27d980;--warn:#ffd166;--fail:#ff6b6b; --log-bg:#091130;}
+        .light-theme{--bg:#f2f5f9;--panel:#fff;--muted:#6b7a99;--text:#111831;--accent:#246ce0;--success:#1f805a;--warn:#d9981e;--fail:#cc3434; --log-bg:#e9ecef;}
         *{box-sizing:border-box}
         body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Arial; transition: background-color 0.3s, color 0.3s;}
         .wrap{max-width:1100px;margin:20px auto;padding:16px}
         h1{font-size:20px;margin:0 0 12px}
-        /* No tabs needed, so removed the .tabs and .tab styles */
         .card{background:var(--panel);border:1px solid #1f2745;border-radius:14px;padding:14px; transition: background-color 0.3s, border-color 0.3s;}
         .light-theme .card {border-color:#e1e5eb}
         textarea,input,button,select{width:100%;border-radius:10px;border:1px solid #20305e;background:var(--bg);color:var(--text);padding:10px;outline:none; transition: background-color 0.3s, border-color 0.3s, color 0.3s;}
@@ -36,18 +35,19 @@
         .muted{color:var(--muted)}
         .pill{display:inline-block;margin-right:8px;margin-top:8px;padding:6px 10px;border-radius:999px;border:1px solid #29335a;background:#0d1533;transition:background-color 0.3s;}
         .light-theme .pill {background-color:#e6e6e6; border-color: #ccc; color: #555;}
-        .pill.active {
+        
+        /* New pill styles for status */
+        .pill.status-active {
             box-shadow: 0 0 5px var(--accent);
             border-color: var(--accent);
         }
-        .pill.cooldown {
+        .pill.status-cooldown {
             border-color: var(--warn);
             color: var(--warn);
         }
-        .ok{border-color:#1e6f4f;color:#a9f3cd}
-        .light-theme .ok {border-color:#65b38d; color: #378a5b;}
-        .err{border-color:#7a2b2b;color:#ffb6b6}
-        .light-theme .err {border-color:#ab5a5a; color: #a82e2e;}
+        .pill.status-success {border-color: var(--success);color: var(--success);}
+        .pill.status-fail {border-color: var(--fail);color: var(--fail);}
+
         pre{height:360px;overflow:auto;background:var(--log-bg);border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap; min-height: 150px; transition: background-color 0.3s, border-color 0.3s;}
         .light-theme pre {border-color:#ddd;}
         pre a {
@@ -218,8 +218,8 @@
             <div class="status-and-timer">
                 <div class="balance-pills">
                     <span class="pill" id="faucetTotal">Total: 0</span>
-                    <span class="pill ok" id="faucetOk">Success: 0</span>
-                    <span class="pill err" id="faucetErr">Errors: 0</span>
+                    <span class="pill status-success" id="faucetSuccess">Success: 0</span>
+                    <span class="pill status-fail" id="faucetFail">Errors: 0</span>
                 </div>
                 <span id="session-timer">⏱ 0s</span>
             </div>
@@ -231,6 +231,8 @@
                 <button id="themeToggle" style="width: auto;">🌙 Toggle Theme</button>
             </div>
             <pre id="logFaucet"></pre>
+            <h2 style="margin-top: 20px;">Session History</h2>
+            <pre id="session-history-log"></pre>
         </section>
     </div>
     
@@ -247,7 +249,7 @@
 
         // Global state variables
         let faucetRun = false;
-        let faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
+        let faucetStats = { total: 0, success: 0, fail: 0, retries: {} };
         let claimsPerSession = {}; // Per-session counter
         let totalClaimsPerWallet = {}; // Total persistent counter
         let rpcUrls = [];
@@ -257,6 +259,10 @@
         let sessionTimerInterval = null;
         let sessionStartTime = 0;
         let walletCooldowns = {};
+        
+        // Session history variables
+        let sessionHistory = [];
+        const SESSION_HISTORY_KEY = "faucetSessionHistory";
 
         // Helper function to create a clickable explorer link
         function createExplorerLink(signature) {
@@ -265,15 +271,20 @@
         }
 
         window.onload = function() {
-            // Restore persistent total stats from localStorage on page load
+            // Restore persistent total stats and session history from localStorage on page load
             const storedTotalClaims = localStorage.getItem("totalClaimsPerWallet");
             if (storedTotalClaims) {
                 totalClaimsPerWallet = JSON.parse(storedTotalClaims);
+            }
+            const storedSessionHistory = localStorage.getItem(SESSION_HISTORY_KEY);
+            if (storedSessionHistory) {
+                sessionHistory = JSON.parse(storedSessionHistory);
             }
             
             updateFaucetStats();
             setupEventListeners();
             handleFaucetModeChange(); // Initialize the faucet UI on page load
+            renderSessionHistory(); // Render the history log on load
         };
 
         // Custom message box
@@ -322,13 +333,16 @@
                 // Clear all stats, including the persistent ones
                 localStorage.removeItem("faucetStats");
                 localStorage.removeItem("totalClaimsPerWallet");
-                faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
+                localStorage.removeItem(SESSION_HISTORY_KEY);
+                faucetStats = { total: 0, success: 0, fail: 0, retries: {} };
                 totalClaimsPerWallet = {};
                 claimsPerSession = {};
                 walletCooldowns = {}; // Reset cooldowns
+                sessionHistory = []; // Clear session history
                 updateFaucetStats();
                 const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
                 createWalletStatusPills(addresses);
+                renderSessionHistory();
             };
             downloadLogBtn.onclick = downloadLog;
             faucetModeSelect.onchange = handleFaucetModeChange;
@@ -338,8 +352,8 @@
             resetSessionBtn.onclick = () => {
                 claimsPerSession = {}; // Reset the session counter
                 walletCooldowns = {}; // Reset cooldowns
-                faucetStats.ok = 0; // Reset session success count
-                faucetStats.err = 0; // Reset session error count
+                faucetStats.success = 0; // Reset session success count
+                faucetStats.fail = 0; // Reset session error count
                 faucetStats.total = 0; // Reset session total count
                 const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
                 createWalletStatusPills(addresses); // Re-render pills
@@ -391,6 +405,41 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
+        
+        // ===== Session History Logic =====
+        function saveSessionHistory() {
+            const newSession = {
+                timestamp: new Date().toLocaleString(),
+                totalClaims: faucetStats.total,
+                success: faucetStats.success,
+                fail: faucetStats.fail,
+                elapsedTime: Date.now() - sessionStartTime,
+                walletClaims: JSON.parse(JSON.stringify(claimsPerSession)) // Deep copy
+            };
+            sessionHistory.unshift(newSession); // Add to the beginning of the array
+            localStorage.setItem(SESSION_HISTORY_KEY, JSON.stringify(sessionHistory));
+            renderSessionHistory();
+        }
+        
+        function renderSessionHistory() {
+            const historyLog = $("session-history-log");
+            if (sessionHistory.length === 0) {
+                historyLog.textContent = 'No past sessions found.';
+                return;
+            }
+            
+            let logText = '';
+            sessionHistory.forEach((session, index) => {
+                logText += `--- Session #${sessionHistory.length - index} (${session.timestamp}) ---\n`;
+                logText += `  Total Claims: ${session.totalClaims}, Success: ${session.success}, Errors: ${session.fail}\n`;
+                logText += `  Duration: ${formatTime(session.elapsedTime)}\n`;
+                for (const [addr, claims] of Object.entries(session.walletClaims)) {
+                    logText += `  - ${addr.substring(0, 8)}...: ${claims} claims\n`;
+                }
+                logText += '\n';
+            });
+            historyLog.textContent = logText;
+        }
 
         // ===== Timer Logic =====
         function formatTime(ms) {
@@ -419,7 +468,28 @@
             const container = $('wallet-status-container');
             container.innerHTML = ''; // Clear previous pills
             
-            addresses.forEach(addr => {
+            // Sort addresses based on status (cooldown first), then by claims
+            const sortedAddresses = [...addresses].sort((a, b) => {
+                const cooldownA = walletCooldowns[a] || 0;
+                const cooldownB = walletCooldowns[b] || 0;
+                const now = Date.now();
+                
+                const isCooldownA = cooldownA > now;
+                const isCooldownB = cooldownB > now;
+                
+                if (isCooldownA && !isCooldownB) return -1;
+                if (!isCooldownA && isCooldownB) return 1;
+                
+                // If both are on cooldown, sort by remaining time (descending)
+                if (isCooldownA && isCooldownB) return cooldownB - cooldownA;
+                
+                // If neither are on cooldown, sort by claims (descending)
+                const claimsA = totalClaimsPerWallet[a] || 0;
+                const claimsB = totalClaimsPerWallet[b] || 0;
+                return claimsB - claimsA;
+            });
+
+            sortedAddresses.forEach(addr => {
                 const pill = document.createElement('span');
                 pill.className = 'pill';
                 pill.id = `status-${addr}`;
@@ -441,7 +511,7 @@
                 const sessionClaims = claimsPerSession[address] || 0;
                 const totalClaims = totalClaimsPerWallet[address] || 0;
                 const retries = faucetStats.retries[address] || 0;
-
+                
                 let textContent = `${address.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims})`;
                 
                 const cooldownEnd = walletCooldowns[address];
@@ -449,14 +519,12 @@
                     const remaining = Math.max(0, cooldownEnd - Date.now());
                     const remainingSeconds = Math.ceil(remaining / 1000);
                     textContent += ` ⏳ ${remainingSeconds}s`;
-                    pill.className = `pill cooldown`;
+                    pill.className = `pill status-cooldown`;
                 } else {
-                    if (status === 'ok') {
-                        textContent += ` ✅`;
-                        pill.className = `pill ok`;
-                    } else if (status === 'err') {
-                        textContent += ` ❌`;
-                        pill.className = `pill err`;
+                    if (status === 'success') {
+                        pill.className = `pill status-success`;
+                    } else if (status === 'fail') {
+                        pill.className = `pill status-fail`;
                         if (retries > 0) {
                             textContent += ` (retries: ${retries})`;
                         }
@@ -464,7 +532,7 @@
                         textContent += ` ⏭`;
                         pill.className = `pill`;
                     } else if (status === 'active') {
-                        pill.className = `pill active`;
+                        pill.className = `pill status-active`;
                     } else { // Idle state for cleanup
                         pill.className = `pill`;
                     }
@@ -492,8 +560,8 @@
         
         function updateFaucetStats() {
             $("faucetTotal").textContent = `Total: ${Object.values(totalClaimsPerWallet).reduce((sum, count) => sum + count, 0)}`;
-            $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
-            $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
+            $("faucetSuccess").textContent = `Success: ${faucetStats.success}`;
+            $("faucetFail").textContent = `Errors: ${faucetStats.fail}`;
             localStorage.setItem("faucetStats", JSON.stringify(faucetStats));
             localStorage.setItem("totalClaimsPerWallet", JSON.stringify(totalClaimsPerWallet));
             updateSessionTimer();
@@ -597,7 +665,7 @@
                     pk = new solanaWeb3.PublicKey(addr);
                 } catch (e) {
                     fLog(`❌ Skipping invalid address: ${addr}. Error: ${e.message}`);
-                    updateWalletStatusUI(addr, 'err', `Invalid address.`);
+                    updateWalletStatusUI(addr, 'fail', `Invalid address.`);
                     await sleep(1000);
                     continue;
                 }
@@ -659,7 +727,7 @@
                 }
                 
                 if (airdropSuccess) {
-                    faucetStats.ok++;
+                    faucetStats.success++;
                     faucetStats.retries[addr] = 0;
                     
                     claimsPerSession[addr]++;
@@ -668,12 +736,12 @@
                     // Set cooldown for this wallet using the new configurable value
                     walletCooldowns[addr] = Date.now() + cooldownSec * 1000;
                     
-                    updateWalletStatusUI(addr, 'ok', `Airdrop successful.`);
+                    updateWalletStatusUI(addr, 'success', `Airdrop successful.`);
                 } else {
-                    faucetStats.err++;
+                    faucetStats.fail++;
                     faucetStats.retries[addr] = (faucetStats.retries[addr] || 0) + 1;
                     fLog(`❌ Failed to airdrop to ${addr} after multiple retries.`);
-                    updateWalletStatusUI(addr, 'err', `Airdrop failed.`);
+                    updateWalletStatusUI(addr, 'fail', `Airdrop failed.`);
                 }
                 
                 updateFaucetStats();
@@ -688,12 +756,13 @@
             
             fLog('🛑 Faucet loop stopped.');
             clearInterval(sessionTimerInterval); // Stop the session timer
+            saveSessionHistory(); // Save the session history
             
-            const perWalletLimitReached = faucetMode === 'per-wallet' && availableAddrs.every(addr => claimsPerSession[addr] >= claimLimit);
+            const perWalletLimitReached = faucetMode === 'per-wallet' && availableAddrs.every(addr => (claimsPerSession[addr] || 0) >= claimLimit);
             const totalLimitReached = faucetMode === 'total' && Object.values(claimsPerSession).reduce((sum, count) => sum + count, 0) >= claimLimit;
             const summaryMessage = (totalLimitReached || perWalletLimitReached)
-                ? `Session complete: ${faucetStats.total} total, ${faucetStats.ok} success, ${faucetStats.err} errors.`
-                : `Stopped manually: ${faucetStats.total} total, ${faucetStats.ok} success, ${faucetStats.err} errors.`;
+                ? `Session complete: ${faucetStats.total} total, ${faucetStats.success} success, ${faucetStats.fail} errors.`
+                : `Stopped manually: ${faucetStats.total} total, ${faucetStats.success} success, ${faucetStats.fail} errors.`;
             showMessage(summaryMessage);
             
             addresses.forEach(addr => updateWalletStatusUI(addr, 'idle', 'Idle'));
@@ -706,19 +775,7 @@
         setInterval(() => {
             if (faucetRun) {
                 const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
-                addresses.forEach(addr => {
-                    const pill = $(`status-${addr}`);
-                    if (pill) {
-                        const cooldownEnd = walletCooldowns[addr];
-                        if (cooldownEnd && cooldownEnd > Date.now()) {
-                            const remaining = Math.max(0, cooldownEnd - Date.now());
-                            const remainingSeconds = Math.ceil(remaining / 1000);
-                            const textContent = `${addr.substring(0, 4)}... (✅${claimsPerSession[addr] || 0} | 📦${totalClaimsPerWallet[addr] || 0}) ⏳ ${remainingSeconds}s`;
-                            pill.textContent = textContent;
-                            pill.className = `pill cooldown`;
-                        }
-                    }
-                });
+                createWalletStatusPills(addresses); // Re-render pills with new sort order
             }
         }, 1000);
     </script>
