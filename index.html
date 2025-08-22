@@ -705,14 +705,20 @@
                 transaction.feePayer = walletProvider.publicKey;
                 
                 let signature;
-                if (walletProvider.signAndSendTransaction) {
-                    ({ signature } = await walletProvider.signAndSendTransaction(transaction));
-                } else {
+                walletLog(`📤 Sending ${amount.toFixed(6)} SOL. Waiting for wallet approval...`);
+
+                try {
+                    // Try the preferred signAndSendTransaction method first
+                    const { signature: sig } = await walletProvider.signAndSendTransaction(transaction);
+                    signature = sig;
+                } catch (e) {
+                    // Fallback to manual signing and sending if the first method fails
+                    walletLog(`⚠️ signAndSendTransaction failed. Falling back to signTransaction...`);
                     const signedTransaction = await walletProvider.signTransaction(transaction);
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
 
-                walletLog(`📤 Sent ${amount.toFixed(6)} SOL. Waiting for confirmation... TX: ${createExplorerLink(signature)}`);
+                walletLog(`Waiting for confirmation... TX: ${createExplorerLink(signature)}`);
                 
                 await connection.confirmTransaction({
                     signature: signature,
@@ -748,9 +754,13 @@
             transaction.feePayer = wallet.publicKey;
 
             let signature;
-            if (wallet.signAndSendTransaction) {
-                ({ signature } = await wallet.signAndSendTransaction(transaction));
-            } else {
+            try {
+                // Try the preferred signAndSendTransaction method first
+                const { signature: sig } = await wallet.signAndSendTransaction(transaction);
+                signature = sig;
+            } catch (e) {
+                // Fallback to manual signing and sending
+                walletLog(`⚠️ signAndSendTransaction failed. Falling back to signTransaction...`);
                 const signedTransaction = await wallet.signTransaction(transaction);
                 signature = await connection.sendRawTransaction(signedTransaction.serialize());
             }
@@ -949,16 +959,21 @@
                 transaction.lastValidBlockHeight = lastValidBlockHeight;
                 transaction.feePayer = walletProvider.publicKey;
 
-                // Sign and send the transaction
                 let signature;
-                if (walletProvider.signAndSendTransaction) {
-                    ({ signature } = await walletProvider.signAndSendTransaction(transaction));
-                } else {
+                walletLog(`📤 Sending ${amount} tokens. Waiting for wallet approval...`);
+
+                try {
+                    // Try the preferred signAndSendTransaction method first
+                    const { signature: sig } = await walletProvider.signAndSendTransaction(transaction);
+                    signature = sig;
+                } catch (e) {
+                    // Fallback to manual signing and sending
+                    walletLog(`⚠️ signAndSendTransaction failed. Falling back to signTransaction...`);
                     const signedTransaction = await walletProvider.signTransaction(transaction);
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
 
-                walletLog(`📤 Sending ${amount} tokens. Waiting for confirmation... TX: ${createExplorerLink(signature)}`);
+                walletLog(`Waiting for confirmation... TX: ${createExplorerLink(signature)}`);
 
                 await connection.confirmTransaction({
                     signature: signature,
