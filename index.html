@@ -633,7 +633,7 @@
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
 
-                walletLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()}`);
+                walletLog(`📤 Sent ${amount.toFixed(6)} SOL. Waiting for confirmation...`);
                 
                 await connection.confirmTransaction({
                     signature: signature,
@@ -816,7 +816,7 @@
                 transaction.feePayer = walletProvider.publicKey;
 
                 // Sign and send the transaction
-                walletLog(`📤 Sending ${amount} tokens...`);
+                walletLog(`📤 Sending ${amount} tokens. Waiting for confirmation...`);
 
                 let signature;
                 if (walletProvider.signAndSendTransaction) {
