@@ -171,6 +171,9 @@
                 <span class="pill ok" id="faucetOk">Success: 0</span>
                 <span class="pill err" id="faucetErr">Errors: 0</span>
             </div>
+            <label class="checkbox-label">
+                <input type="checkbox" id="pauseScroll"> Pause auto-scroll
+            </label>
             <pre id="logFaucet"></pre>
         </section>
     </div>
@@ -198,11 +201,18 @@
         }
 
         window.onload = function() {
-            // Reset counters on page load
-            faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
-            claimsPerWallet = {};
-            updateFaucetStats();
+            // Restore stats from localStorage on page load
+            const storedStats = localStorage.getItem("faucetStats");
+            const storedClaims = localStorage.getItem("claimsPerWallet");
 
+            if (storedStats) {
+                faucetStats = JSON.parse(storedStats);
+            }
+            if (storedClaims) {
+                claimsPerWallet = JSON.parse(storedClaims);
+            }
+
+            updateFaucetStats();
             setupEventListeners();
             handleFaucetModeChange(); // Initialize the faucet UI on page load
         };
@@ -228,14 +238,34 @@
             const clearFaucetBtn = $("clearFaucetLog");
             const downloadLogBtn = $("downloadLog"); // New button
             const faucetModeSelect = $("faucetMode");
+            
+            // Add handler for addresses textarea to create pills on input
+            const addrsFaucetTextarea = $("addrsFaucet");
+            addrsFaucetTextarea.oninput = () => {
+                const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                createWalletStatusPills(addresses);
+            };
 
-            startFaucetBtn.onclick = () => { if (!faucetRun) faucetLoop(); };
+            startFaucetBtn.onclick = () => {
+                const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                if (!faucetRun) faucetLoop(addresses);
+            };
             stopFaucetBtn.onclick = () => { 
                 faucetRun = false; 
                 stopFaucetBtn.textContent = 'Stopping...';
                 stopFaucetBtn.disabled = true;
             };
-            clearFaucetBtn.onclick = () => { $("logFaucet").innerHTML = ''; };
+            clearFaucetBtn.onclick = () => { 
+                $("logFaucet").innerHTML = ''; 
+                // Clear localStorage as well
+                localStorage.removeItem("faucetStats");
+                localStorage.removeItem("claimsPerWallet");
+                faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
+                claimsPerWallet = {};
+                updateFaucetStats();
+                const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                createWalletStatusPills(addresses);
+            };
             downloadLogBtn.onclick = downloadLog; // New event listener for the download button
             faucetModeSelect.onchange = handleFaucetModeChange;
         }
@@ -249,6 +279,9 @@
             } else {
                 limitContainer.classList.remove('hidden');
             }
+            // Update pills when mode changes
+            const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+            createWalletStatusPills(addresses);
         }
 
         // ===== New function to download the log file =====
@@ -273,11 +306,22 @@
         function createWalletStatusPills(addresses) {
             const container = $('wallet-status-container');
             container.innerHTML = ''; // Clear previous pills
+            const limit = parseInt($("faucetClaimLimit").value);
+            const faucetMode = $("faucetMode").value;
+            
             addresses.forEach(addr => {
                 const pill = document.createElement('span');
                 pill.className = 'pill';
                 pill.id = `status-${addr}`;
-                pill.textContent = `${addr.substring(0, 4)}...`;
+                
+                // Show initial status with counter for 'per-wallet' mode
+                const claims = claimsPerWallet[addr] || 0;
+                let textContent = `${addr.substring(0, 4)}...`;
+                if (faucetMode === 'per-wallet') {
+                    textContent += ` (${claims}/${limit})`;
+                }
+                pill.textContent = textContent;
+                
                 pill.title = addr;
                 container.appendChild(pill);
             });
@@ -286,18 +330,29 @@
         function updateWalletStatusUI(address, status, message) {
             const pill = $(`status-${address}`);
             if (pill) {
-                pill.className = `pill ${status}`;
-                pill.textContent = `${address.substring(0, 4)}...`;
-                if (status === 'ok') {
-                    pill.textContent += ` ✅`;
-                    if ($("faucetMode").value === 'per-wallet') {
-                        pill.textContent += ` (${claimsPerWallet[address]}/${parseInt($("faucetClaimLimit").value)})`;
-                    }
-                } else if (status === 'err') {
-                    pill.textContent += ` ❌`;
-                } else if (status === 'skipped') {
-                    pill.textContent += ` ⏭`;
+                const limit = parseInt($("faucetClaimLimit").value);
+                const claims = claimsPerWallet[address] || 0;
+                const faucetMode = $("faucetMode").value;
+
+                let textContent = `${address.substring(0, 4)}...`;
+                if (faucetMode === 'per-wallet') {
+                    textContent += ` (${claims}/${limit})`;
                 }
+
+                if (status === 'ok') {
+                    textContent += ` ✅`;
+                    pill.className = `pill ok`;
+                } else if (status === 'err') {
+                    textContent += ` ❌`;
+                    pill.className = `pill err`;
+                } else if (status === 'skipped') {
+                    textContent += ` ⏭`;
+                    pill.className = `pill`; // No special color for skipped
+                } else if (status === 'active') {
+                    pill.className = `pill active`;
+                }
+                
+                pill.textContent = textContent;
                 pill.title = `${address}: ${message}`;
             }
         }
@@ -307,13 +362,19 @@
             const ts = new Date().toLocaleTimeString();
             const logElement = $("logFaucet");
             logElement.innerHTML += `[${ts}] ${msg}<br>`;
-            logElement.scrollTop = logElement.scrollHeight;
+            
+            // Check the new toggle before auto-scrolling
+            if (!$("pauseScroll").checked) {
+                logElement.scrollTop = logElement.scrollHeight;
+            }
         }
         
         function updateFaucetStats() {
             $("faucetTotal").textContent = `Total: ${faucetStats.total}`;
             $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
             $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
+            // Persist stats to localStorage
+            localStorage.setItem("faucetStats", JSON.stringify(faucetStats));
         }
 
         function toggleFaucetInputs(disabled) {
@@ -329,11 +390,9 @@
             $("stopFaucet").disabled = !disabled;
         }
 
-        async function faucetLoop() {
-            // Reset counters at the start of a new loop
-            faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
-            claimsPerWallet = {};
-            updateFaucetStats();
+        async function faucetLoop(addresses) {
+            // Initialize pills based on addresses
+            createWalletStatusPills(addresses);
 
             const rpc = $("rpcFaucet").value.trim();
             const amountSol = parseFloat($("amtFaucet").value || '0.1');
@@ -347,7 +406,6 @@
             }
             const lamports = Math.floor(amountSol * 1e9);
             const skipLamports = Math.floor(skipBalance * 1e9);
-            const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
             const faucetMode = $("faucetMode").value;
             const claimLimit = parseInt($("faucetClaimLimit").value);
             
@@ -360,8 +418,6 @@
                 return;
             }
             
-            createWalletStatusPills(addresses);
-
             faucetRun = true;
             toggleFaucetInputs(true);
             
@@ -404,13 +460,13 @@
                         break;
                     }
                     // Pick a random address from the remaining ones
-                    const nextAddr = availableAddableAddrs[Math.floor(Math.random() * availableAddrs.length)];
+                    const nextAddr = availableAddrs[Math.floor(Math.random() * availableAddrs.length)];
                     fLog(`Skipping ${addr}. Trying next address: ${nextAddr}`);
                     await sleep(1000); // Short delay to prevent hammering
                     continue;
                 }
                 
-                updateWalletStatusUI(addr, '', `Attempting airdrop...`);
+                updateWalletStatusUI(addr, 'active', `Attempting airdrop...`);
 
                 // === Balance Check Improvement ===
                 try {
@@ -440,7 +496,8 @@
                         airdropSuccess = true;
                         break;
                     } catch (e) {
-                        const delay = Math.pow(2, retryCount) * 1000;
+                        // Capped exponential backoff
+                        const delay = Math.min(Math.pow(2, retryCount) * 1000, 30000);
                         fLog(`❌ Error on attempt ${retryCount + 1}: ${e?.message || e}`);
                         fLog(`Retrying in ${delay / 1000}s...`);
                         await sleep(delay);
@@ -456,6 +513,7 @@
                     faucetStats.retries[addr] = 0; // Reset retries on success
                     if (faucetMode === 'per-wallet') {
                          claimsPerWallet[addr]++;
+                         localStorage.setItem("claimsPerWallet", JSON.stringify(claimsPerWallet));
                     }
                     updateWalletStatusUI(addr, 'ok', `Airdrop successful.`);
                 } else {
@@ -475,6 +533,9 @@
             }
             
             fLog('🛑 Faucet loop stopped.');
+            // Add a final summary message
+            showMessage(`Session complete: ${faucetStats.total} total, ${faucetStats.ok} success, ${faucetStats.err} errors.`);
+            
             toggleFaucetInputs(false);
             $('stopFaucet').textContent = '⏹ Stop';
         }
