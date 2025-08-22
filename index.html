@@ -14,28 +14,38 @@
         window.Buffer = buffer.Buffer;
     </script>
     <style>
-        :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b}
+        :root{--bg:#0b1020;--panel:#111831;--muted:#6b7a99;--text:#e8edf7;--accent:#7aa2ff;--ok:#27d980;--warn:#ffd166;--err:#ff6b6b; --log-bg:#091130;}
+        .light-theme{--bg:#f2f5f9;--panel:#fff;--muted:#6b7a99;--text:#111831;--accent:#246ce0;--ok:#1f805a;--warn:#d9981e;--err:#cc3434; --log-bg:#e9ecef;}
         *{box-sizing:border-box}
-        body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Arial}
+        body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Arial; transition: background-color 0.3s, color 0.3s;}
         .wrap{max-width:1100px;margin:20px auto;padding:16px}
         h1{font-size:20px;margin:0 0 12px}
         /* No tabs needed, so removed the .tabs and .tab styles */
-        .card{background:linear-gradient(180deg,#121a36,#0e152b);border:1px solid #1f2745;border-radius:14px;padding:14px}
-        textarea,input,button,select{width:100%;border-radius:10px;border:1px solid #20305e;background:#0c1430;color:var(--text);padding:10px;outline:none;}
+        .card{background:var(--panel);border:1px solid #1f2745;border-radius:14px;padding:14px; transition: background-color 0.3s, border-color 0.3s;}
+        .light-theme .card {border-color:#e1e5eb}
+        textarea,input,button,select{width:100%;border-radius:10px;border:1px solid #20305e;background:var(--bg);color:var(--text);padding:10px;outline:none; transition: background-color 0.3s, border-color 0.3s, color 0.3s;}
+        .light-theme textarea, .light-theme input, .light-theme select {background-color: #e9ecef;}
         button{cursor:pointer;font-weight:700;transition:background-color 0.3s, transform 0.1s;}
         button:hover:not(:disabled) {
             background-color: #29335a;
         }
+        .light-theme button:hover:not(:disabled) {
+             background-color: #ddd;
+        }
         .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        .muted{color:#9fb0d6}
+        .muted{color:var(--muted)}
         .pill{display:inline-block;margin-right:8px;margin-top:8px;padding:6px 10px;border-radius:999px;border:1px solid #29335a;background:#0d1533;transition:background-color 0.3s;}
+        .light-theme .pill {background-color:#e6e6e6; border-color: #ccc; color: #555;}
         .pill.active {
             box-shadow: 0 0 5px var(--accent);
             border-color: var(--accent);
         }
         .ok{border-color:#1e6f4f;color:#a9f3cd}
+        .light-theme .ok {border-color:#65b38d; color: #378a5b;}
         .err{border-color:#7a2b2b;color:#ffb6b6}
-        pre{height:360px;overflow:auto;background:#091130;border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap; min-height: 150px;}
+        .light-theme .err {border-color:#ab5a5a; color: #a82e2e;}
+        pre{height:360px;overflow:auto;background:var(--log-bg);border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap; min-height: 150px; transition: background-color 0.3s, border-color 0.3s;}
+        .light-theme pre {border-color:#ddd;}
         pre a {
             color: var(--accent);
             text-decoration: underline;
@@ -56,6 +66,11 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             z-index: 1000;
         }
+        .light-theme #message-box {
+            background: #e9ecef;
+            border-color: #ddd;
+            color: #111831;
+        }
         #message-box.show {
             display: block;
             animation: fadeIn 0.3s ease-out;
@@ -73,6 +88,10 @@
             color: #666;
             cursor: not-allowed;
             opacity: 0.5;
+        }
+        .light-theme button:disabled, .light-theme input:disabled, .light-theme textarea:disabled, .light-theme select:disabled {
+            background-color: #f1f1f1;
+            color: #bbb;
         }
         .balance-pills {
             display: flex;
@@ -95,6 +114,7 @@
             background: #2a345a;
             margin: 20px 0;
         }
+        .light-theme .section-separator {background-color: #ddd;}
         .faucet-link {
             text-align: center;
             margin-bottom: 12px;
@@ -133,7 +153,7 @@
             </div>
             <div class="row" style="margin-top:8px">
                 <div>
-                    <label>RPC URL</label>
+                    <label>RPC URL(s) (comma-separated for failover)</label>
                     <input id="rpcFaucet" value="https://devnet-rpc.solayer.org" />
                 </div>
                 <div>
@@ -171,9 +191,12 @@
                 <span class="pill ok" id="faucetOk">Success: 0</span>
                 <span class="pill err" id="faucetErr">Errors: 0</span>
             </div>
-            <label class="checkbox-label">
-                <input type="checkbox" id="pauseScroll"> Pause auto-scroll
-            </label>
+            <div class="row" style="margin-top:8px">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="pauseScroll"> Pause auto-scroll
+                </label>
+                <button id="themeToggle" style="width: auto;">🌙 Toggle Theme</button>
+            </div>
             <pre id="logFaucet"></pre>
         </section>
     </div>
@@ -193,6 +216,8 @@
         let faucetRun = false;
         let faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
         let claimsPerWallet = {};
+        let rpcUrls = [];
+        let currentRpcIndex = 0;
 
         // Helper function to create a clickable explorer link
         function createExplorerLink(signature) {
@@ -238,6 +263,7 @@
             const clearFaucetBtn = $("clearFaucetLog");
             const downloadLogBtn = $("downloadLog");
             const faucetModeSelect = $("faucetMode");
+            const themeToggleBtn = $("themeToggle");
             
             // Add handler for addresses textarea to create pills on input
             const addrsFaucetTextarea = $("addrsFaucet");
@@ -268,6 +294,7 @@
             };
             downloadLogBtn.onclick = downloadLog;
             faucetModeSelect.onchange = handleFaucetModeChange;
+            themeToggleBtn.onclick = toggleTheme;
         }
 
         // Handles the UI change for different faucet claim modes
@@ -282,6 +309,18 @@
             // Update pills when mode changes
             const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
             createWalletStatusPills(addresses);
+        }
+
+        // ===== Theme Toggle Logic =====
+        function toggleTheme() {
+            const body = document.body;
+            const themeToggleBtn = $("themeToggle");
+            body.classList.toggle('light-theme');
+            if (body.classList.contains('light-theme')) {
+                themeToggleBtn.textContent = '☀️ Toggle Theme';
+            } else {
+                themeToggleBtn.textContent = '🌙 Toggle Theme';
+            }
         }
 
         // ===== New function to download the log file =====
@@ -333,6 +372,7 @@
                 const limit = parseInt($("faucetClaimLimit").value);
                 const claims = claimsPerWallet[address] || 0;
                 const faucetMode = $("faucetMode").value;
+                const retries = faucetStats.retries[address] || 0;
 
                 let textContent = `${address.substring(0, 4)}...`;
                 if (faucetMode === 'per-wallet') {
@@ -345,6 +385,9 @@
                 } else if (status === 'err') {
                     textContent += ` ❌`;
                     pill.className = `pill err`;
+                    if (retries > 0) {
+                        textContent += ` (retries: ${retries})`;
+                    }
                 } else if (status === 'skipped') {
                     textContent += ` ⏭`;
                     pill.className = `pill`; // No special color for skipped
@@ -401,20 +444,30 @@
             $("stopFaucet").disabled = !disabled;
         }
 
+        // Function to switch to the next RPC in the list
+        function switchRpc() {
+            currentRpcIndex = (currentRpcIndex + 1) % rpcUrls.length;
+            const newRpc = rpcUrls[currentRpcIndex];
+            fLog(`⚠️ RPC failed. Switching to next RPC: ${newRpc}`);
+            return new solanaWeb3.Connection(newRpc, { commitment: 'confirmed' });
+        }
+
         async function faucetLoop(addresses) {
             // Initialize pills based on addresses
             createWalletStatusPills(addresses);
 
-            const rpc = $("rpcFaucet").value.trim();
+            const rpcInput = $("rpcFaucet").value.trim();
             const amountSol = parseFloat($("amtFaucet").value || '0.1');
             const minDelay = parseInt($("minDelay").value) || 1000;
             const maxDelay = parseInt($("maxDelay").value) || 5000;
             const skipBalance = parseFloat($("skipBalance").value) || 5;
             
-            if (!rpc) {
-                showMessage('Please enter an RPC URL.');
+            rpcUrls = rpcInput.split(',').map(url => url.trim()).filter(Boolean);
+            if (!rpcUrls.length) {
+                showMessage('Please enter at least one RPC URL.');
                 return;
             }
+
             const lamports = Math.floor(amountSol * 1e9);
             const skipLamports = Math.floor(skipBalance * 1e9);
             const faucetMode = $("faucetMode").value;
@@ -432,8 +485,9 @@
             faucetRun = true;
             toggleFaucetInputs(true);
             
-            fLog(`Connecting to RPC → ${rpc}`);
-            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+            currentRpcIndex = 0;
+            let connection = new solanaWeb3.Connection(rpcUrls[currentRpcIndex], { commitment: 'confirmed' });
+            fLog(`Connecting to RPC → ${rpcUrls[currentRpcIndex]}`);
             
             while (faucetRun) {
                 if (faucetMode === 'total' && faucetStats.ok >= claimLimit) {
@@ -511,8 +565,15 @@
                         // Capped exponential backoff
                         const delay = Math.min(Math.pow(2, retryCount) * 1000, 30000);
                         fLog(`❌ Error on attempt ${retryCount + 1}: ${e?.message || e}`);
-                        fLog(`Retrying in ${delay / 1000}s...`);
-                        await sleep(delay);
+                        
+                        // Check if RPC failed entirely
+                        if (e.message && e.message.includes('HTTP 502 Bad Gateway') || e.message.includes('429 Too Many Requests') || e.message.includes('failed to get a response')) {
+                            connection = switchRpc();
+                        } else {
+                            fLog(`Retrying in ${delay / 1000}s...`);
+                            await sleep(delay);
+                        }
+
                         if (!faucetRun) { // Check for stop command after delay
                             break;
                         }
