@@ -178,8 +178,8 @@
             <div id="manual-sol-ui">
                 <p class="muted">Send a specific amount of SOL to a specific address or a random one.</p>
                 <div class="checkbox-label">
-                    <input type="checkbox" id="useRandomAddress" style="width: auto;"/>
-                    <label for="useRandomAddress">Use a random address</label>
+                    <input type="checkbox" id="useRandomAddressSol" style="width: auto;"/>
+                    <label for="useRandomAddressSol">Use a random address</label>
                 </div>
                 <label style="margin-top:8px">Recipient Address</label>
                 <input id="recipientAddressSol" placeholder="Enter recipient address..." />
@@ -207,6 +207,10 @@
             <!-- Token Transfer Section -->
             <div id="token-ui" class="hidden">
                 <p class="muted">Send existing SPL tokens to another wallet.</p>
+                <div class="checkbox-label">
+                    <input type="checkbox" id="useRandomAddressToken" style="width: auto;"/>
+                    <label for="useRandomAddressToken">Use a random address</label>
+                </div>
                 <label style="margin-top:8px">Token Mint Address</label>
                 <input id="tokenMintAddress" placeholder="Enter token mint address..." value="2wFqA859fS99z7bQJ3XjYJtX8yB1E4P9Wd5K5qJ3Xj" />
                 <label style="margin-top:8px">Recipient Address</label>
@@ -302,10 +306,24 @@
             stopSenderBtn.onclick = () => { senderRun = false; };
 
             // Manual SOL Transfer Checkbox
-            const useRandomAddressCheckbox = $('useRandomAddress');
-            useRandomAddressCheckbox.onchange = () => {
+            const useRandomAddressSolCheckbox = $('useRandomAddressSol');
+            useRandomAddressSolCheckbox.onchange = () => {
                 const recipientAddressInput = $('recipientAddressSol');
-                if (useRandomAddressCheckbox.checked) {
+                if (useRandomAddressSolCheckbox.checked) {
+                    recipientAddressInput.disabled = true;
+                    recipientAddressInput.value = '';
+                    recipientAddressInput.placeholder = 'Random address will be generated...';
+                } else {
+                    recipientAddressInput.disabled = false;
+                    recipientAddressInput.placeholder = 'Enter recipient address...';
+                }
+            };
+            
+            // SPL Token Transfer Checkbox
+            const useRandomAddressTokenCheckbox = $('useRandomAddressToken');
+            useRandomAddressTokenCheckbox.onchange = () => {
+                const recipientAddressInput = $('recipientAddressToken');
+                if (useRandomAddressTokenCheckbox.checked) {
                     recipientAddressInput.disabled = true;
                     recipientAddressInput.value = '';
                     recipientAddressInput.placeholder = 'Random address will be generated...';
@@ -560,7 +578,7 @@
 
         // Manual SOL transfer function
         async function sendManualSOL() {
-            const useRandomAddressCheckbox = $('useRandomAddress');
+            const useRandomAddressCheckbox = $('useRandomAddressSol');
             const recipientStr = $('recipientAddressSol').value.trim();
             const amountStr = $('sendAmountSol').value.trim();
             
@@ -720,6 +738,7 @@
 
         // Token transfer function
         async function sendToken() {
+            const useRandomAddressCheckbox = $('useRandomAddressToken');
             const tokenMintStr = $('tokenMintAddress').value.trim();
             const recipientStr = $('recipientAddressToken').value.trim();
             const amountStr = $('sendAmountToken').value.trim();
@@ -728,7 +747,7 @@
                 showMessage('Please connect your wallet first.');
                 return;
             }
-            if (!tokenMintStr || !recipientStr || !amountStr) {
+            if (!tokenMintStr || (!useRandomAddressCheckbox.checked && !recipientStr) || !amountStr) {
                 showMessage('Please fill in all token transfer fields.');
                 return;
             }
@@ -736,14 +755,20 @@
             try {
                 const connection = new solanaWeb3.Connection($("rpcWallet").value.trim(), { commitment: 'confirmed' });
                 const tokenMint = new solanaWeb3.PublicKey(tokenMintStr);
-                const recipient = new solanaWeb3.PublicKey(recipientStr);
                 const amount = parseFloat(amountStr);
                 if (isNaN(amount) || amount <= 0) {
                     showMessage('Please enter a valid token amount.');
                     return;
                 }
 
-                walletLog(`Checking if recipient has an Associated Token Account...`);
+                let recipient;
+                if (useRandomAddressCheckbox.checked) {
+                    recipient = solanaWeb3.Keypair.generate().publicKey;
+                    walletLog(`Sending tokens to a newly generated random address...`);
+                } else {
+                    recipient = new solanaWeb3.PublicKey(recipientStr);
+                    walletLog(`Sending tokens to ${recipientStr}...`);
+                }
                 
                 // Get the sender's token account
                 const senderTokenAccount = await splToken.getAssociatedTokenAddress(
@@ -791,7 +816,7 @@
                 transaction.feePayer = walletProvider.publicKey;
 
                 // Sign and send the transaction
-                walletLog(`📤 Sending ${amount} tokens to ${recipient.toBase58()}...`);
+                walletLog(`📤 Sending ${amount} tokens...`);
 
                 let signature;
                 if (walletProvider.signAndSendTransaction) {
@@ -800,6 +825,11 @@
                     const signedTransaction = await walletProvider.signTransaction(transaction);
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
+
+                await connection.confirmTransaction({
+                    signature: signature,
+                    commitment: 'confirmed',
+                });
 
                 walletLog(`✅ Token transaction confirmed. TX: ${signature}`);
             } catch (e) {
