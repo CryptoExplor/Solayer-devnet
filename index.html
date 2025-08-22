@@ -29,7 +29,10 @@
         .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
         .muted{color:#9fb0d6}
         .pill{display:inline-block;margin-right:8px;margin-top:8px;padding:6px 10px;border-radius:999px;border:1px solid #29335a;background:#0d1533;transition:background-color 0.3s;}
-        .pill:hover{background-color: #25315a;}
+        .pill.active {
+            box-shadow: 0 0 5px var(--accent);
+            border-color: var(--accent);
+        }
         .ok{border-color:#1e6f4f;color:#a9f3cd}
         .err{border-color:#7a2b2b;color:#ffb6b6}
         pre{height:360px;overflow:auto;background:#091130;border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap; min-height: 150px;}
@@ -154,6 +157,9 @@
             </div>
             <label style="margin-top:8px">Wallet addresses (one per line, base58)</label>
             <textarea id="addrsFaucet" rows="6" placeholder="9x3H...\nC4nDy...\n..."></textarea>
+            <div id="wallet-status-container" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
+                <!-- Wallet status pills will be dynamically inserted here -->
+            </div>
             <div class="row" style="margin-top:8px">
                 <button id="startFaucet">▶ Start Faucet Loop</button>
                 <button id="stopFaucet" disabled>⏹ Stop</button>
@@ -263,6 +269,39 @@
             URL.revokeObjectURL(url);
         }
 
+        // ===== Per-Wallet Status Tracking UI Logic =====
+        function createWalletStatusPills(addresses) {
+            const container = $('wallet-status-container');
+            container.innerHTML = ''; // Clear previous pills
+            addresses.forEach(addr => {
+                const pill = document.createElement('span');
+                pill.className = 'pill';
+                pill.id = `status-${addr}`;
+                pill.textContent = `${addr.substring(0, 4)}...`;
+                pill.title = addr;
+                container.appendChild(pill);
+            });
+        }
+
+        function updateWalletStatusUI(address, status, message) {
+            const pill = $(`status-${address}`);
+            if (pill) {
+                pill.className = `pill ${status}`;
+                pill.textContent = `${address.substring(0, 4)}...`;
+                if (status === 'ok') {
+                    pill.textContent += ` ✅`;
+                    if ($("faucetMode").value === 'per-wallet') {
+                        pill.textContent += ` (${claimsPerWallet[address]}/${parseInt($("faucetClaimLimit").value)})`;
+                    }
+                } else if (status === 'err') {
+                    pill.textContent += ` ❌`;
+                } else if (status === 'skipped') {
+                    pill.textContent += ` ⏭`;
+                }
+                pill.title = `${address}: ${message}`;
+            }
+        }
+
         // ===== Faucet Auto‑Claimer Logic =====
         function fLog(msg) {
             const ts = new Date().toLocaleTimeString();
@@ -320,6 +359,8 @@
                 showMessage('Please enter a valid number of claims.');
                 return;
             }
+            
+            createWalletStatusPills(addresses);
 
             faucetRun = true;
             toggleFaucetInputs(true);
@@ -343,6 +384,7 @@
                     pk = new solanaWeb3.PublicKey(addr);
                 } catch (e) {
                     fLog(`❌ Skipping invalid address: ${addr}. Error: ${e.message}`);
+                    updateWalletStatusUI(addr, 'err', `Invalid address.`);
                     await sleep(1000); // Short delay to prevent hammering
                     continue;
                 }
@@ -362,17 +404,20 @@
                         break;
                     }
                     // Pick a random address from the remaining ones
-                    const nextAddr = availableAddrs[Math.floor(Math.random() * availableAddrs.length)];
+                    const nextAddr = availableAddableAddrs[Math.floor(Math.random() * availableAddrs.length)];
                     fLog(`Skipping ${addr}. Trying next address: ${nextAddr}`);
                     await sleep(1000); // Short delay to prevent hammering
                     continue;
                 }
+                
+                updateWalletStatusUI(addr, '', `Attempting airdrop...`);
 
                 // === Balance Check Improvement ===
                 try {
                     const balance = await connection.getBalance(pk);
                     if (balance > skipLamports) {
                         fLog(`⏭ Skipping ${addr}. Balance (${(balance / 1e9).toFixed(2)} SOL) is already sufficient.`);
+                        updateWalletStatusUI(addr, 'skipped', `Balance sufficient: ${(balance / 1e9).toFixed(2)} SOL`);
                         await sleep(1000);
                         continue;
                     }
@@ -412,10 +457,12 @@
                     if (faucetMode === 'per-wallet') {
                          claimsPerWallet[addr]++;
                     }
+                    updateWalletStatusUI(addr, 'ok', `Airdrop successful.`);
                 } else {
                     faucetStats.err++;
                     faucetStats.retries[addr] = (faucetStats.retries[addr] || 0) + 1; // Increment retries
                     fLog(`❌ Failed to airdrop to ${addr} after multiple retries.`);
+                    updateWalletStatusUI(addr, 'err', `Airdrop failed.`);
                 }
                 updateFaucetStats();
                 
