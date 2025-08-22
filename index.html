@@ -35,19 +35,18 @@
         .muted{color:var(--muted)}
         .pill{display:inline-block;margin-right:8px;margin-top:8px;padding:6px 10px;border-radius:999px;border:1px solid #29335a;background:#0d1533;transition:background-color 0.3s;}
         .light-theme .pill {background-color:#e6e6e6; border-color: #ccc; color: #555;}
-        
-        /* New pill styles for status */
-        .pill.status-active {
+        .pill.active {
             box-shadow: 0 0 5px var(--accent);
             border-color: var(--accent);
         }
-        .pill.status-cooldown {
+        .pill.cooldown {
             border-color: var(--warn);
             color: var(--warn);
         }
-        .pill.status-success {border-color: var(--success);color: var(--success);}
-        .pill.status-fail {border-color: var(--fail);color: var(--fail);}
-
+        .ok{border-color:#1e6f4f;color:#a9f3cd}
+        .light-theme .ok {border-color:#65b38d; color: #378a5b;}
+        .err{border-color:#7a2b2b;color:#ffb6b6}
+        .light-theme .err {border-color:#ab5a5a; color: #a82e2e;}
         pre{height:360px;overflow:auto;background:var(--log-bg);border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap; min-height: 150px; transition: background-color 0.3s, border-color 0.3s;}
         .light-theme pre {border-color:#ddd;}
         pre a {
@@ -636,12 +635,14 @@
                     const remaining = Math.max(0, cooldownEnd - Date.now());
                     const remainingSeconds = Math.ceil(remaining / 1000);
                     textContent += ` ⏳ ${remainingSeconds}s`;
-                    pill.className = `pill status-cooldown`;
+                    pill.className = `pill cooldown`;
                 } else {
-                    if (status === 'success') {
-                        pill.className = `pill status-success`;
-                    } else if (status === 'fail') {
-                        pill.className = `pill status-fail`;
+                    if (status === 'ok') {
+                        textContent += ` ✅`;
+                        pill.className = `pill ok`;
+                    } else if (status === 'err') {
+                        textContent += ` ❌`;
+                        pill.className = `pill err`;
                         if (retries > 0) {
                             textContent += ` (retries: ${retries})`;
                         }
@@ -649,7 +650,7 @@
                         textContent += ` ⏭`;
                         pill.className = `pill`;
                     } else if (status === 'active') {
-                        pill.className = `pill status-active`;
+                        pill.className = `pill active`;
                     } else { // Idle state for cleanup
                         pill.className = `pill`;
                     }
