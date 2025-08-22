@@ -186,6 +186,9 @@
                 <button id="clearFaucetLog">🧹 Clear Log</button>
                 <button id="downloadLog">⬇️ Download Log</button>
             </div>
+            <div class="row" style="margin-top:8px">
+                <button id="resetSession">♻️ Reset Session Counts</button>
+            </div>
             <div class="balance-pills">
                 <span class="pill" id="faucetTotal">Total: 0</span>
                 <span class="pill ok" id="faucetOk">Success: 0</span>
@@ -261,7 +264,8 @@
             const downloadLogBtn = $("downloadLog");
             const faucetModeSelect = $("faucetMode");
             const themeToggleBtn = $("themeToggle");
-            
+            const resetSessionBtn = $("resetSession"); // New button
+
             // Add handler for addresses textarea to create pills on input
             const addrsFaucetTextarea = $("addrsFaucet");
             addrsFaucetTextarea.oninput = () => {
@@ -293,6 +297,14 @@
             downloadLogBtn.onclick = downloadLog;
             faucetModeSelect.onchange = handleFaucetModeChange;
             themeToggleBtn.onclick = toggleTheme;
+            
+            // New reset session button handler
+            resetSessionBtn.onclick = () => {
+                claimsPerSession = {}; // Reset the session counter
+                const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                createWalletStatusPills(addresses); // Re-render pills
+                fLog("♻️ Session counts reset.");
+            };
         }
 
         // Handles the UI change for different faucet claim modes
@@ -344,8 +356,6 @@
         function createWalletStatusPills(addresses) {
             const container = $('wallet-status-container');
             container.innerHTML = ''; // Clear previous pills
-            const limit = parseInt($("faucetClaimLimit").value);
-            const faucetMode = $("faucetMode").value;
             
             addresses.forEach(addr => {
                 const pill = document.createElement('span');
@@ -355,12 +365,8 @@
                 const sessionClaims = claimsPerSession[addr] || 0;
                 const totalClaims = totalClaimsPerWallet[addr] || 0;
 
-                let textContent = `${addr.substring(0, 4)}...`;
-                if (faucetMode === 'per-wallet') {
-                     textContent += ` (✅${sessionClaims} | 📦${totalClaims})`;
-                } else {
-                     textContent += ` (📦${totalClaims})`;
-                }
+                // Always show both session and total claims
+                const textContent = `${addr.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims})`;
 
                 pill.textContent = textContent;
                 pill.title = addr;
@@ -373,15 +379,10 @@
             if (pill) {
                 const sessionClaims = claimsPerSession[address] || 0;
                 const totalClaims = totalClaimsPerWallet[address] || 0;
-                const faucetMode = $("faucetMode").value;
                 const retries = faucetStats.retries[address] || 0;
 
-                let textContent = `${address.substring(0, 4)}...`;
-                if (faucetMode === 'per-wallet') {
-                     textContent += ` (✅${sessionClaims} | 📦${totalClaims})`;
-                } else {
-                     textContent += ` (📦${totalClaims})`;
-                }
+                // Always show both session and total claims
+                let textContent = `${address.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims})`;
 
                 if (status === 'ok') {
                     textContent += ` ✅`;
@@ -591,7 +592,7 @@
                     
                     // Step 2: Increment both counters when a claim succeeds
                     claimsPerSession[addr]++;
-                    totalClaimsPerWallet[addr]++;
+                    totalClaimsPerWallet[addr] = (totalClaimsPerWallet[addr] || 0) + 1;
                     
                     updateWalletStatusUI(addr, 'ok', `Airdrop successful.`);
                 } else {
