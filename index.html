@@ -393,7 +393,7 @@
         }
         function checkWalletButtons() {
             const connected = walletProvider !== null;
-            $('sendSolBtn').disabled = !connected || $('useRandomAddressSol').checked && walletProvider === null;
+            $('sendSolBtn').disabled = !connected || ($('useRandomAddressSol').checked && walletProvider === null);
             $('sendTokenBtn').disabled = !connected;
             $('startSender').disabled = !connected;
         }
@@ -542,6 +542,35 @@
             }
         }
 
+        async function waitForConfirmation(connection, signature, maxAttempts = 30) {
+            for (let i = 0; i < maxAttempts; i++) {
+                try {
+                    const status = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+                    const result = status.value;
+                    
+                    if (result && result.confirmationStatus === 'finalized') {
+                        walletLog(`✅ Transaction is finalized.`);
+                        return true;
+                    }
+                    if (result && result.confirmationStatus === 'confirmed') {
+                        walletLog(`✅ Transaction is confirmed.`);
+                        return true;
+                    }
+                    if (result && result.err) {
+                        throw new Error(`Transaction failed with error: ${JSON.stringify(result.err)}`);
+                    }
+                } catch (e) {
+                    // Log the error but don't re-throw unless it's a critical error
+                    console.error(`Status check failed on attempt ${i + 1}:`, e);
+                }
+                
+                // Add a delay before checking again
+                await sleep(1000); 
+            }
+            
+            throw new Error('Timeout: Transaction not confirmed after 30 seconds.');
+        }
+
         async function sendManualSOL() {
             try {
                 const rpc = $('rpcWallet').value;
@@ -572,9 +601,8 @@
                     return;
                 }
 
-                // Add priority fee instruction
                 const priorityFeeInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({
-                    microLamports: 50000, 
+                    microLamports: 150000, 
                 });
 
                 const transaction = new solanaWeb3.Transaction()
@@ -587,16 +615,12 @@
                         })
                     );
 
-                let signature;
-                let confirmation;
-
-                // Get fresh blockhash immediately before sending
                 const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
                 transaction.recentBlockhash = blockhash;
                 transaction.lastValidBlockHeight = lastValidBlockHeight;
                 transaction.feePayer = walletProvider.publicKey;
 
-                // Send transaction
+                let signature;
                 if (walletProvider.signAndSendTransaction) {
                     const res = await walletProvider.signAndSendTransaction(transaction, {
                         skipPreflight: false,
@@ -613,20 +637,8 @@
                 }
                 
                 walletLog(`📤 Attempting to send ${amount.toFixed(6)} SOL to ${recipient.toBase58()}. TX: ${createExplorerLink(signature)}`);
-
-                const confirmationStrategy = {
-                    signature,
-                    blockhash,
-                    lastValidBlockHeight,
-                    abortSignal: AbortSignal.timeout(30000)
-                };
-
-                confirmation = await connection.confirmTransaction(confirmationStrategy, 'confirmed');
+                await waitForConfirmation(connection, signature);
                 
-                if (confirmation.value.err) {
-                    throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-                }
-
                 walletLog(`✅ Transaction confirmed! ${amount.toFixed(6)} SOL sent successfully to ${recipient.toBase58()}`);
                 await fetchBalances();
 
@@ -674,7 +686,6 @@
                     updateSenderStats();
                 }
 
-                // If the loop is still running after a successful send, wait before the next one.
                 if (senderRun) {
                     await sleep(rand(1000, 5000));
                 }
@@ -704,9 +715,8 @@
             const lamports = Math.floor(amount * solanaWeb3.LAMPORTS_PER_SOL);
 
             try {
-                // Add priority fee instruction (helps avoid getting dropped)
                 const priorityFeeInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({
-                    microLamports: 50000, // 0.05 SOL per compute unit - adjust as needed
+                    microLamports: 150000, 
                 });
                 
                 const transaction = new solanaWeb3.Transaction()
@@ -719,23 +729,18 @@
                         })
                     );
 
-                let signature;
-                let confirmation;
-
-                // Check balance before sending
                 const balance = await connection.getBalance(walletProvider.publicKey);
-                const estimatedFee = 10000; // ~0.00001 SOL base fee + priority fee
+                const estimatedFee = 10000; 
                 if (balance < lamports + estimatedFee) {
                     throw new Error(`Insufficient funds: ${balance / solanaWeb3.LAMPORTS_PER_SOL} SOL available, need ${(lamports + estimatedFee) / solanaWeb3.LAMPORTS_PER_SOL} SOL`);
                 }
 
-                // Get fresh blockhash immediately before sending
                 const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
                 transaction.recentBlockhash = blockhash;
                 transaction.lastValidBlockHeight = lastValidBlockHeight;
                 transaction.feePayer = walletProvider.publicKey;
 
-                // Send transaction
+                let signature;
                 if (walletProvider.signAndSendTransaction) {
                     const res = await walletProvider.signAndSendTransaction(transaction, {
                         skipPreflight: false,
@@ -751,21 +756,8 @@
                     });
                 }
                 
-                // Log sending attempt (but not success yet)
                 walletLog(`📤 Attempting to send ${amount.toFixed(6)} SOL to ${recipient.toBase58()}. TX: ${createExplorerLink(signature)}`);
-
-                const confirmationStrategy = {
-                    signature,
-                    blockhash,
-                    lastValidBlockHeight,
-                    abortSignal: AbortSignal.timeout(30000) // 30 second timeout
-                };
-
-                confirmation = await connection.confirmTransaction(confirmationStrategy, 'confirmed');
-                
-                if (confirmation.value.err) {
-                    throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-                }
+                await waitForConfirmation(connection, signature);
 
                 walletLog(`✅ Transaction confirmed! ${amount.toFixed(6)} SOL sent successfully.`);
                 await fetchBalances();
@@ -783,7 +775,7 @@
                     walletLog(`❌ Send error: ${errorMessage}`);
                 }
                 console.error("TX Error Details:", e);
-                throw e; // Re-throw to trigger retry logic
+                throw e; 
             }
         }
 
@@ -820,9 +812,7 @@
                 let toTokenAccount = await connection.getAccountInfo(await solanaWeb3.getAssociatedTokenAddress(mintAddress, recipientAddress));
 
                 let transaction = new solanaWeb3.Transaction();
-                const tokenAmount = amount * (10 ** 9); // Assuming 9 decimals for tokens
 
-                // If the recipient does not have a token account, create one
                 if (!toTokenAccount) {
                     walletLog("Recipient token account not found. Creating it...");
                     const createIx = solanaWeb3.createAssociatedTokenAccountInstruction(
@@ -836,26 +826,23 @@
                     transaction.add(createIx);
                 }
 
-                // Add priority fee instruction
                 const priorityFeeInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({
-                    microLamports: 50000, 
+                    microLamports: 150000, 
                 });
                 transaction.add(priorityFeeInstruction);
 
-                // Add the token transfer instruction
                 const transferIx = solanaWeb3.createTransferCheckedInstruction(
                     fromTokenAccount,
                     mintAddress,
                     solanaWeb3.getAssociatedTokenAddressSync(mintAddress, recipientAddress),
                     walletProvider.publicKey,
-                    tokenAmount,
-                    9, // Token decimals
+                    BigInt(amount * (10 ** 9)), // Use BigInt for precision
+                    9, 
                     [],
                     solanaWeb3.TOKEN_PROGRAM_ID
                 );
                 transaction.add(transferIx);
 
-                // Get fresh blockhash and send
                 const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
                 transaction.recentBlockhash = blockhash;
                 transaction.lastValidBlockHeight = lastValidBlockHeight;
@@ -880,19 +867,7 @@
                 }
                 
                 walletLog(`TX: ${createExplorerLink(signature)}`);
-                
-                const confirmationStrategy = {
-                    signature,
-                    blockhash,
-                    lastValidBlockHeight,
-                    abortSignal: AbortSignal.timeout(30000)
-                };
-
-                const confirmation = await connection.confirmTransaction(confirmationStrategy, 'confirmed');
-
-                if (confirmation.value.err) {
-                    throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-                }
+                await waitForConfirmation(connection, signature);
 
                 walletLog(`✅ Token transfer confirmed! ${amount} tokens sent successfully.`);
                 
