@@ -167,6 +167,14 @@
             padding: 0;
             list-style: none;
         }
+        .guide-section {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #2a345a;
+        }
+        .light-theme .guide-section {
+            border-top-color: #ddd;
+        }
     </style>
 </head>
 <body>
@@ -236,6 +244,7 @@
             </div>
             <div class="row" style="margin-top:8px">
                 <button id="resetSession">♻️ Reset Session Counts</button>
+                <button id="downloadClaims">⬇️ Export Claims JSON</button>
             </div>
             <div class="status-and-timer">
                 <div class="balance-pills">
@@ -265,6 +274,36 @@
             <pre id="logFaucet"></pre>
             <h2 style="margin-top: 20px;">Session History</h2>
             <pre id="session-history-log"></pre>
+        </section>
+
+        <!-- Guide Section -->
+        <section class="guide-section">
+            <h2>Guide for Using the Auto-Claimer</h2>
+            <p>This application helps you automatically claim SOL from the Solayer Devnet Faucet across multiple wallets. It's designed to be resilient, with features like multi-RPC randomization and error analytics to give you a smooth experience.</p>
+
+            <h3>How to Configure</h3>
+            <p>
+                To get started, simply follow these steps:
+                <ul>
+                    <li><strong>RPC URL(s):</strong> Enter one or more RPC endpoints, separated by a comma. The app will randomly select one for each claim attempt to balance the load.</li>
+                    <li><strong>Wallet addresses:</strong> Paste the list of wallet public keys, with one address on each new line.</li>
+                    <li><strong>Amount & Delay:</strong> Set the amount of SOL to claim per airdrop and the minimum/maximum delay between each claim. The app will use a random delay within this range.</li>
+                    <li><strong>Skip & Cooldown:</strong> Use the "Skip If Balance" field to prevent claiming on wallets that already have enough SOL. The "Cooldown" setting prevents the app from spamming a single wallet, ensuring your requests don't get throttled.</li>
+                </ul>
+            </p>
+
+            <h3>Key Features</h3>
+            <p>
+                <ul>
+                    <li><strong>Multi-RPC Randomization:</strong> The app automatically switches between the RPCs you provide, reducing the chance of a single endpoint getting rate-limited. If an RPC fails, it will attempt to use another.</li>
+                    <li><strong>Error Analytics:</strong> The "Error Analytics" box gives you a real-time breakdown of the types of errors you're encountering, which is useful for debugging and understanding network issues.</li>
+                    <li><strong>Session History & Export:</strong> The "Session History" log keeps a record of your past claiming sessions. You can also export a JSON file containing your total and session claims using the "Export Claims JSON" button.</li>
+                </ul>
+            </p>
+            <p>
+                For more details and to contribute to the project, visit the official GitHub repository:
+                <a href="https://github.com/CryptoExplor/Solayer-devnet-faucet" target="_blank">https://github.com/CryptoExplor/Solayer-devnet-faucet</a>
+            </p>
         </section>
     </div>
     
@@ -338,6 +377,7 @@
             const stopFaucetBtn = $("stopFaucet");
             const clearFaucetBtn = $("clearFaucetLog");
             const downloadLogBtn = $("downloadLog");
+            const downloadClaimsBtn = $("downloadClaims");
             const faucetModeSelect = $("faucetMode");
             const themeToggleBtn = $("themeToggle");
             const resetSessionBtn = $("resetSession");
@@ -377,6 +417,7 @@
                 renderSessionHistory();
             };
             downloadLogBtn.onclick = downloadLog;
+            downloadClaimsBtn.onclick = downloadClaims;
             faucetModeSelect.onchange = handleFaucetModeChange;
             themeToggleBtn.onclick = toggleTheme;
             
@@ -434,6 +475,24 @@
             const a = document.createElement('a');
             a.href = url;
             a.download = `faucet-log-${new Date().toISOString()}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // ===== New function to download claims data as JSON =====
+        function downloadClaims() {
+            const data = {
+                totals: totalClaimsPerWallet,
+                session: claimsPerSession,
+                timestamp: new Date().toISOString()
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `claims-${new Date().toISOString()}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -655,7 +714,7 @@
             const amountSol = parseFloat($("amtFaucet").value || '0.1');
             const minDelay = parseInt($("minDelay").value) || 1000;
             const maxDelay = parseInt($("maxDelay").value) || 5000;
-            const skipBalance = parseFloat($("skipBalance").value) || 5;
+            const skipBalance = parseFloat($("skipBalance").value) || 0;
             const cooldownSec = parseInt($("cooldown").value) || 60;
             
             rpcUrls = rpcInput.split(',').map(url => url.trim()).filter(Boolean);
@@ -747,6 +806,7 @@
                     }
                 } catch(e) {
                     fLog(`⚠️ Could not check balance for ${addr}: ${e?.message || e}. Proceeding with airdrop.`);
+                    incrementErrorCount(categorizeError(e?.message || 'Unknown Error'));
                 }
                 
                 // Update total stats for this run (will be reset for a new run)
