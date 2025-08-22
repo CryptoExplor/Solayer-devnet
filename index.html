@@ -68,7 +68,7 @@
             border: 1px solid #3c4c7b;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            z-index: 1000;
+            z-index: 9999;
         }
         .light-theme #message-box {
             background: #e9ecef;
@@ -174,6 +174,9 @@
         }
         .light-theme .guide-section {
             border-top-color: #ddd;
+        }
+        .log-entry {
+            margin: 4px 0;
         }
     </style>
 </head>
@@ -315,15 +318,24 @@
     <script>
         // Helper functions
         const $ = (id) => document.getElementById(id);
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         const rand = (min, max) => Math.random() * (max - min) + min;
+        
+        // Debounce utility function
+        function debounce(fn, delay = 300) {
+            let t;
+            return (...args) => {
+                clearTimeout(t);
+                t = setTimeout(() => fn(...args), delay);
+            };
+        }
 
         // Global state variables
         let faucetRun = false;
-        let faucetStats = { total: 0, success: 0, fail: 0, retries: {}, errors: {} };
+        let faucetStats = { total: 0, success: 0, fail: 0, errors: {} };
         let claimsPerSession = {}; // Per-session counter
         let totalClaimsPerWallet = {}; // Total persistent counter
         let rpcUrls = [];
+        let faucetLoopAbortController = null; // Global abort controller for the faucet loop
 
         // Timer variables
         let sessionTimerInterval = null;
@@ -333,12 +345,6 @@
         // Session history variables
         let sessionHistory = [];
         const SESSION_HISTORY_KEY = "faucetSessionHistory";
-
-        // Helper function to create a clickable explorer link
-        function createExplorerLink(signature) {
-            const explorerBaseUrl = "https://explorer.solayer.org";
-            return `<a href="${explorerBaseUrl}/tx/${signature}" target="_blank">${signature.substring(0, 8)}...</a>`;
-        }
 
         window.onload = function() {
             // Restore persistent total stats and session history from localStorage on page load
@@ -381,20 +387,28 @@
             const faucetModeSelect = $("faucetMode");
             const themeToggleBtn = $("themeToggle");
             const resetSessionBtn = $("resetSession");
-
-            // Add handler for addresses textarea to create pills on input
             const addrsFaucetTextarea = $("addrsFaucet");
-            addrsFaucetTextarea.oninput = () => {
+
+            // Use the debounce utility for the address input
+            addrsFaucetTextarea.oninput = debounce(() => {
                 const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
-                createWalletStatusPills(addresses);
-            };
+                const uniqueAddresses = [...new Set(addresses)];
+                if (addresses.length !== uniqueAddresses.length) {
+                    showMessage(`Removed ${addresses.length - uniqueAddresses.length} duplicate addresses.`);
+                }
+                createWalletStatusPills(uniqueAddresses);
+            });
 
             startFaucetBtn.onclick = () => {
-                const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                const addresses = [...new Set($("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean))];
                 if (!faucetRun) faucetLoop(addresses);
             };
             stopFaucetBtn.onclick = () => { 
                 faucetRun = false; 
+                // Abort any pending network requests
+                if (faucetLoopAbortController) {
+                    faucetLoopAbortController.abort();
+                }
                 stopFaucetBtn.textContent = 'Stopping...';
                 stopFaucetBtn.disabled = true;
                 clearInterval(sessionTimerInterval); // Stop the session timer
@@ -405,14 +419,14 @@
                 localStorage.removeItem("faucetStats");
                 localStorage.removeItem("totalClaimsPerWallet");
                 localStorage.removeItem(SESSION_HISTORY_KEY);
-                faucetStats = { total: 0, success: 0, fail: 0, retries: {}, errors: {} };
+                faucetStats = { total: 0, success: 0, fail: 0, errors: {} };
                 totalClaimsPerWallet = {};
                 claimsPerSession = {};
                 walletCooldowns = {}; // Reset cooldowns
                 sessionHistory = []; // Clear session history
                 updateFaucetStats();
                 renderErrorAnalytics(); // Clear error analytics
-                const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                const addresses = [...new Set($("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean))];
                 createWalletStatusPills(addresses);
                 renderSessionHistory();
             };
@@ -429,7 +443,7 @@
                 faucetStats.fail = 0; // Reset session error count
                 faucetStats.total = 0; // Reset session total count
                 faucetStats.errors = {}; // Reset error analytics
-                const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                const addresses = [...new Set($("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean))];
                 createWalletStatusPills(addresses); // Re-render pills
                 fLog("♻️ Session counts reset.");
                 updateFaucetStats();
@@ -447,7 +461,7 @@
                 limitContainer.classList.remove('hidden');
             }
             // Update pills when mode changes
-            const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+            const addresses = [...new Set($("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean))];
             createWalletStatusPills(addresses);
         }
 
@@ -660,13 +674,49 @@
             }
         }
 
+        // Function to create a clickable explorer link, now returns a DOM element
+        function createExplorerLinkElement(signature) {
+            const explorerBaseUrl = "https://explorer.solayer.org";
+            const link = document.createElement('a');
+            link.href = `${explorerBaseUrl}/tx/${signature}`;
+            link.target = "_blank";
+            link.textContent = `${signature.substring(0, 8)}...`;
+            return link;
+        }
+
         // ===== Faucet Auto‑Claimer Logic =====
         function fLog(msg) {
             const ts = new Date().toLocaleTimeString();
             const logElement = $("logFaucet");
-            logElement.innerHTML += `[${ts}] ${msg}<br>`;
             
-            if (logElement.childNodes.length > 1000) {
+            const entryDiv = document.createElement('div');
+            entryDiv.className = 'log-entry';
+            
+            const timestampSpan = document.createElement('span');
+            timestampSpan.textContent = `[${ts}] `;
+            
+            entryDiv.appendChild(timestampSpan);
+            
+            // Check for transaction signature to create a link
+            const signatureRegex = /(?:TX:\s)?([a-zA-Z0-9]{87,88})/;
+            const match = msg.match(signatureRegex);
+            
+            if (match) {
+                const before = msg.substring(0, match.index);
+                const signature = match[1];
+                const after = msg.substring(match.index + match[0].length);
+
+                entryDiv.appendChild(document.createTextNode(before + 'TX: '));
+                entryDiv.appendChild(createExplorerLinkElement(signature));
+                entryDiv.appendChild(document.createTextNode(after));
+            } else {
+                entryDiv.appendChild(document.createTextNode(msg));
+            }
+
+            logElement.appendChild(entryDiv);
+            
+            // Trim entries to a maximum of 1000 for performance
+            while (logElement.childElementCount > 1000) {
                 logElement.removeChild(logElement.firstChild);
             }
             
@@ -676,7 +726,8 @@
         }
         
         function updateFaucetStats() {
-            $("faucetTotal").textContent = `Total: ${Object.values(totalClaimsPerWallet).reduce((sum, count) => sum + count, 0)}`;
+            const total = Object.values(totalClaimsPerWallet).reduce((sum, count) => sum + count, 0);
+            $("faucetTotal").textContent = `Total: ${total}`;
             $("faucetSuccess").textContent = `Success: ${faucetStats.success}`;
             $("faucetFail").textContent = `Errors: ${faucetStats.fail}`;
             localStorage.setItem("faucetStats", JSON.stringify(faucetStats));
@@ -704,11 +755,78 @@
             return new solanaWeb3.Connection(rpcUrls[randomIndex], { commitment: 'confirmed' });
         }
 
+        // A cancellable sleep function using the AbortController signal
+        function sleep(ms, signal) {
+            return new Promise((resolve, reject) => {
+                const onAbort = () => {
+                    clearTimeout(timeoutId);
+                    signal.removeEventListener('abort', onAbort);
+                    reject(new Error("sleep aborted"));
+                };
+                signal.addEventListener('abort', onAbort);
+                const timeoutId = setTimeout(() => {
+                    signal.removeEventListener('abort', onAbort);
+                    resolve();
+                }, ms);
+            });
+        }
+        
+        // Airdrop request with timeout
+        async function requestAirdropWithTimeout(connection, pk, lamports, timeoutMs = 30000, signal) {
+            const airdropPromise = connection.requestAirdrop(pk, lamports, { commitment: 'confirmed' });
+            
+            const timeoutPromise = new Promise((_, reject) => {
+                if (signal.aborted) {
+                    reject(new Error("Request aborted"));
+                    return;
+                }
+                const onAbort = () => {
+                    clearTimeout(timeoutId);
+                    signal.removeEventListener('abort', onAbort);
+                    reject(new Error('Request aborted/timeout'));
+                };
+                signal.addEventListener('abort', onAbort);
+                const timeoutId = setTimeout(() => {
+                    signal.removeEventListener('abort', onAbort);
+                    reject(new Error('Request timeout'));
+                }, timeoutMs);
+            });
+            
+            const signature = await Promise.race([airdropPromise, timeoutPromise]);
+
+            await Promise.race([
+                connection.confirmTransaction({ signature, blockhash: 'latest', lastValidBlockHeight: Infinity }, 'confirmed'),
+                timeoutPromise
+            ]);
+            
+            return signature;
+        }
+
         async function faucetLoop(addresses) {
             claimsPerSession = {};
             walletCooldowns = {};
             
-            createWalletStatusPills(addresses);
+            // Check for invalid addresses first and inform the user
+            const validAddresses = [];
+            let invalidCount = 0;
+            addresses.forEach(addr => {
+                try {
+                    new solanaWeb3.PublicKey(addr);
+                    validAddresses.push(addr);
+                } catch (e) {
+                    invalidCount++;
+                }
+            });
+            if (invalidCount > 0) {
+                showMessage(`Skipped ${invalidCount} invalid wallet addresses.`);
+            }
+            
+            if (validAddresses.length === 0) {
+                 fLog('No valid addresses provided. Stopping loop.');
+                 return;
+            }
+
+            createWalletStatusPills(validAddresses);
 
             const rpcInput = $("rpcFaucet").value.trim();
             const amountSol = parseFloat($("amtFaucet").value || '0.1');
@@ -728,16 +846,13 @@
             const faucetMode = $("faucetMode").value;
             const claimLimit = parseInt($("faucetClaimLimit").value);
             
-            if (!addresses.length) {
-                showMessage('Please enter at least one address for the Faucet.');
-                return;
-            }
             if ((faucetMode === 'total' || faucetMode === 'per-wallet') && (isNaN(claimLimit) || claimLimit <= 0)) {
                 showMessage('Please enter a valid number of claims.');
                 return;
             }
             
             faucetRun = true;
+            faucetLoopAbortController = new AbortController();
             toggleFaucetInputs(true);
             
             // Start the session timer
@@ -755,7 +870,7 @@
                 }
                 
                 // Filter out addresses that are currently on cooldown
-                const availableAddrs = addresses.filter(addr => !walletCooldowns[addr] || walletCooldowns[addr] <= Date.now());
+                const availableAddrs = validAddresses.filter(addr => !walletCooldowns[addr] || walletCooldowns[addr] <= Date.now());
                 
                 if (faucetMode === 'per-wallet' && availableAddrs.every(addr => (claimsPerSession[addr] || 0) >= claimLimit)) {
                     fLog('All available wallets have reached their claim limit. Stopping loop.');
@@ -765,7 +880,8 @@
                 
                 if (availableAddrs.length === 0) {
                     fLog(`All wallets are on cooldown. Waiting for a wallet to become available.`);
-                    await sleep(1000);
+                    await sleep(1000, faucetLoopAbortController.signal).catch(() => {});
+                    if (!faucetRun) break;
                     continue;
                 }
                 
@@ -773,22 +889,14 @@
                 const randomIndex = Math.floor(Math.random() * availableAddrs.length);
                 const addr = availableAddrs[randomIndex];
                 
-                let pk;
-                try {
-                    pk = new solanaWeb3.PublicKey(addr);
-                } catch (e) {
-                    fLog(`❌ Skipping invalid address: ${addr}. Error: ${e.message}`);
-                    updateWalletStatusUI(addr, 'fail', `Invalid address.`);
-                    await sleep(1000);
-                    continue;
-                }
+                const pk = new solanaWeb3.PublicKey(addr);
                 
                 if (!claimsPerSession[addr]) claimsPerSession[addr] = 0;
                 if (!totalClaimsPerWallet[addr]) totalClaimsPerWallet[addr] = 0;
                 
                 if (faucetMode === 'per-wallet' && claimsPerSession[addr] >= claimLimit) {
                     fLog(`Skipping ${addr}. Per-wallet limit of ${claimLimit} reached.`);
-                    await sleep(1000);
+                    await sleep(1000, faucetLoopAbortController.signal).catch(() => {});
                     continue;
                 }
                 
@@ -801,7 +909,7 @@
                     if (balance > skipLamports) {
                         fLog(`⏭ Skipping ${addr}. Balance (${(balance / 1e9).toFixed(2)} SOL) is already sufficient.`);
                         updateWalletStatusUI(addr, 'skipped', `Balance sufficient: ${(balance / 1e9).toFixed(2)} SOL`);
-                        await sleep(1000);
+                        await sleep(1000, faucetLoopAbortController.signal).catch(() => {});
                         continue;
                     }
                 } catch(e) {
@@ -820,13 +928,19 @@
                     try {
                         const connection = getRandomRpc(); // Randomly pick an RPC for the airdrop
                         fLog(`Attempt ${retryCount + 1}: Using RPC ${connection._rpcEndpoint}`);
-                        const sig = await connection.requestAirdrop(pk, lamports);
-                        await connection.confirmTransaction(sig, 'confirmed');
-                        fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
+                        const sig = await requestAirdropWithTimeout(connection, pk, lamports, 30000, faucetLoopAbortController.signal);
+                        fLog(`✅ Airdrop confirmed! TX: ${sig}`);
                         airdropSuccess = true;
                         break;
                     } catch (e) {
+                        if (e.message.includes('aborted') || e.message.includes('timeout')) {
+                            fLog(`⚠️ Request aborted or timed out.`);
+                            faucetRun = false;
+                            break;
+                        }
+                        
                         const delay = Math.min(Math.pow(2, retryCount) * 1000, 30000);
+                        const jitter = Math.random() * 1000; // Add jitter to the delay
                         fLog(`❌ Error on attempt ${retryCount + 1}: ${e?.message || e}`);
                         
                         // Categorize and log the error
@@ -834,8 +948,8 @@
                         const errorCategory = categorizeError(errorMessage);
                         incrementErrorCount(errorCategory);
                         
-                        fLog(`Retrying in ${delay / 1000}s...`);
-                        await sleep(delay);
+                        fLog(`Retrying in ${((delay + jitter) / 1000).toFixed(2)}s...`);
+                        await sleep(delay + jitter, faucetLoopAbortController.signal).catch(() => {});
 
                         if (!faucetRun) {
                             break;
@@ -866,7 +980,7 @@
                 const delay = Math.floor(rand(min, max));
                 fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
                 if (faucetRun) {
-                    await sleep(delay);
+                    await sleep(delay, faucetLoopAbortController.signal).catch(() => {});
                 }
             }
             
@@ -874,14 +988,14 @@
             clearInterval(sessionTimerInterval); // Stop the session timer
             saveSessionHistory(); // Save the session history
             
-            const perWalletLimitReached = faucetMode === 'per-wallet' && availableAddrs.every(addr => (claimsPerSession[addr] || 0) >= claimLimit);
+            const perWalletLimitReached = faucetMode === 'per-wallet' && validAddresses.every(addr => (claimsPerSession[addr] || 0) >= claimLimit);
             const totalLimitReached = faucetMode === 'total' && Object.values(claimsPerSession).reduce((sum, count) => sum + count, 0) >= claimLimit;
             const summaryMessage = (totalLimitReached || perWalletLimitReached)
                 ? `Session complete: ${faucetStats.total} total, ${faucetStats.success} success, ${faucetStats.fail} errors.`
                 : `Stopped manually: ${faucetStats.total} total, ${faucetStats.success} success, ${faucetStats.fail} errors.`;
             showMessage(summaryMessage);
             
-            addresses.forEach(addr => updateWalletStatusUI(addr, 'idle', 'Idle'));
+            validAddresses.forEach(addr => updateWalletStatusUI(addr, 'idle', 'Idle'));
             
             toggleFaucetInputs(false);
             $('stopFaucet').textContent = '⏹ Stop';
@@ -901,7 +1015,7 @@
         // A separate interval to update cooldown timers and sort pills
         setInterval(() => {
             if (faucetRun) {
-                const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                const addresses = [...new Set($("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean))];
                 createWalletStatusPills(addresses); // Re-render pills with new sort order
             }
         }, 1000);
