@@ -115,7 +115,7 @@
             <div class="faucet-link">
                 Official Faucet: <a href="https://explorer.solayer.org/faucet" target="_blank">https://explorer.solayer.org/faucet</a>
             </div>
-            <p class="muted">Runs indefinitely with random 1–5s delay across all addresses.</p>
+            <p class="muted">Runs indefinitely with a random delay. Skips wallets with sufficient balance.</p>
             <div style="margin-bottom:8px">
                 <label>Claim Mode</label>
                 <select id="faucetMode">
@@ -138,12 +138,27 @@
                     <input id="amtFaucet" type="number" step="0.001" value="1" />
                 </div>
             </div>
+            <div class="row" style="margin-top:8px">
+                <div>
+                    <label>Min Delay (ms)</label>
+                    <input id="minDelay" type="number" min="1000" value="1000" />
+                </div>
+                <div>
+                    <label>Max Delay (ms)</label>
+                    <input id="maxDelay" type="number" min="1000" value="5000" />
+                </div>
+            </div>
+            <div style="margin-top:8px">
+                <label>Skip If Balance > (SOL)</label>
+                <input id="skipBalance" type="number" step="0.1" value="500" />
+            </div>
             <label style="margin-top:8px">Wallet addresses (one per line, base58)</label>
             <textarea id="addrsFaucet" rows="6" placeholder="9x3H...\nC4nDy...\n..."></textarea>
             <div class="row" style="margin-top:8px">
                 <button id="startFaucet">▶ Start Faucet Loop</button>
                 <button id="stopFaucet" disabled>⏹ Stop</button>
                 <button id="clearFaucetLog">🧹 Clear Log</button>
+                <button id="downloadLog">⬇️ Download Log</button>
             </div>
             <div class="balance-pills">
                 <span class="pill" id="faucetTotal">Total: 0</span>
@@ -205,6 +220,7 @@
             const startFaucetBtn = $("startFaucet");
             const stopFaucetBtn = $("stopFaucet");
             const clearFaucetBtn = $("clearFaucetLog");
+            const downloadLogBtn = $("downloadLog"); // New button
             const faucetModeSelect = $("faucetMode");
 
             startFaucetBtn.onclick = () => { if (!faucetRun) faucetLoop(); };
@@ -214,6 +230,7 @@
                 stopFaucetBtn.disabled = true;
             };
             clearFaucetBtn.onclick = () => { $("logFaucet").innerHTML = ''; };
+            downloadLogBtn.onclick = downloadLog; // New event listener for the download button
             faucetModeSelect.onchange = handleFaucetModeChange;
         }
 
@@ -226,6 +243,24 @@
             } else {
                 limitContainer.classList.remove('hidden');
             }
+        }
+
+        // ===== New function to download the log file =====
+        function downloadLog() {
+            const logContent = $('logFaucet').innerText.replace(/<br>/g, '\n').replace(/\[.*?\]\s/g, ''); // Clean up HTML and timestamps
+            if (!logContent) {
+                showMessage("Log is empty, nothing to download.");
+                return;
+            }
+            const blob = new Blob([logContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `faucet-log-${new Date().toISOString()}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         // ===== Faucet Auto‑Claimer Logic =====
@@ -248,6 +283,9 @@
             $("addrsFaucet").disabled = disabled;
             $("faucetMode").disabled = disabled;
             $("faucetClaimLimit").disabled = disabled;
+            $("minDelay").disabled = disabled; // New input
+            $("maxDelay").disabled = disabled; // New input
+            $("skipBalance").disabled = disabled; // New input
             $("startFaucet").disabled = disabled;
             $("stopFaucet").disabled = !disabled;
         }
@@ -259,12 +297,17 @@
             updateFaucetStats();
 
             const rpc = $("rpcFaucet").value.trim();
+            const amountSol = parseFloat($("amtFaucet").value || '0.1');
+            const minDelay = parseInt($("minDelay").value) || 1000;
+            const maxDelay = parseInt($("maxDelay").value) || 5000;
+            const skipBalance = parseFloat($("skipBalance").value) || 5;
+            
             if (!rpc) {
                 showMessage('Please enter an RPC URL.');
                 return;
             }
-            const amountSol = parseFloat($("amtFaucet").value || '0.1');
             const lamports = Math.floor(amountSol * 1e9);
+            const skipLamports = Math.floor(skipBalance * 1e9);
             const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
             const faucetMode = $("faucetMode").value;
             const claimLimit = parseInt($("faucetClaimLimit").value);
@@ -277,7 +320,7 @@
                 showMessage('Please enter a valid number of claims.');
                 return;
             }
-            
+
             faucetRun = true;
             toggleFaucetInputs(true);
             
@@ -324,6 +367,18 @@
                     await sleep(1000); // Short delay to prevent hammering
                     continue;
                 }
+
+                // === Balance Check Improvement ===
+                try {
+                    const balance = await connection.getBalance(pk);
+                    if (balance > skipLamports) {
+                        fLog(`⏭ Skipping ${addr}. Balance (${(balance / 1e9).toFixed(2)} SOL) is already sufficient.`);
+                        await sleep(1000);
+                        continue;
+                    }
+                } catch(e) {
+                    fLog(`⚠️ Could not check balance for ${addr}: ${e?.message || e}. Proceeding with airdrop.`);
+                }
                 
                 faucetStats.total++;
                 updateFaucetStats();
@@ -344,6 +399,9 @@
                         fLog(`❌ Error on attempt ${retryCount + 1}: ${e?.message || e}`);
                         fLog(`Retrying in ${delay / 1000}s...`);
                         await sleep(delay);
+                        if (!faucetRun) { // Check for stop command after delay
+                            break;
+                        }
                         retryCount++;
                     }
                 }
@@ -361,7 +419,8 @@
                 }
                 updateFaucetStats();
                 
-                const delay = Math.floor(rand(1000, 5000));
+                // === Configurable Random Delay Improvement ===
+                const delay = Math.floor(rand(minDelay, maxDelay));
                 fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
                 if (faucetRun) {
                     await sleep(delay);
