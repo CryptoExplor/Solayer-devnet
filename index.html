@@ -68,7 +68,7 @@
             border: 1px solid #3c4c7b;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            z-index: 9999;
+            z-index: 1000;
         }
         .light-theme #message-box {
             background: #e9ecef;
@@ -636,12 +636,14 @@
                     const remaining = Math.max(0, cooldownEnd - Date.now());
                     const remainingSeconds = Math.ceil(remaining / 1000);
                     textContent += ` ⏳ ${remainingSeconds}s`;
-                    pill.className = `pill status-cooldown`;
+                    pill.className = `pill cooldown`;
                 } else {
-                    if (status === 'success') {
-                        pill.className = `pill status-success`;
-                    } else if (status === 'fail') {
-                        pill.className = `pill status-fail`;
+                    if (status === 'ok') {
+                        textContent += ` ✅`;
+                        pill.className = `pill ok`;
+                    } else if (status === 'err') {
+                        textContent += ` ❌`;
+                        pill.className = `pill err`;
                         if (retries > 0) {
                             textContent += ` (retries: ${retries})`;
                         }
@@ -649,7 +651,7 @@
                         textContent += ` ⏭`;
                         pill.className = `pill`;
                     } else if (status === 'active') {
-                        pill.className = `pill status-active`;
+                        pill.className = `pill active`;
                     } else { // Idle state for cleanup
                         pill.className = `pill`;
                     }
