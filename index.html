@@ -494,7 +494,7 @@
                         break;
                     }
                     // Pick a random address from the remaining ones
-                    const nextAddr = availableAddrs[Math.floor(Math.random() * availableAddrs.length)];
+                    const nextAddr = availableAddableAddrs[Math.floor(Math.random() * availableAddrs.length)];
                     fLog(`Skipping ${addr}. Trying next address: ${nextAddr}`);
                     await sleep(1000); // Short delay to prevent hammering
                     continue;
@@ -651,7 +651,7 @@
                 let recipient;
                 if (useRandomAddressCheckbox.checked) {
                     recipient = solanaWeb3.Keypair.generate().publicKey;
-                    walletLog(`Sending ${amount.toFixed(6)} SOL to a newly generated random address...`);
+                    walletLog(`Sending ${amount.toFixed(6)} SOL to a newly generated random address: ${recipient.toBase58()}`);
                 } else {
                     try {
                         recipient = new solanaWeb3.PublicKey(recipientStr);
@@ -684,13 +684,14 @@
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
 
-                walletLog(`📤 Sent ${amount.toFixed(6)} SOL. Waiting for confirmation...`);
+                // FIX: Log signature immediately for immediate user feedback
+                walletLog(`📤 Sent ${amount.toFixed(6)} SOL. Waiting for confirmation... TX: ${signature}`);
                 
                 await connection.confirmTransaction({
                     signature: signature,
                     commitment: 'confirmed',
                 });
-                walletLog(`✅ SOL transaction confirmed. TX: ${signature}`);
+                walletLog(`✅ SOL transaction confirmed!`);
                 
                 // Refresh SOL balance after successful transaction
                 await fetchBalances(connection, walletProvider.publicKey);
@@ -727,13 +728,16 @@
                 signature = await connection.sendRawTransaction(signedTransaction.serialize());
             }
 
-            walletLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()}`);
+            // FIX: Log signature immediately for immediate user feedback
+            walletLog(`📤 Sent ${amount.toFixed(6)} SOL to ${recipient.toBase58()}. TX: ${signature}`);
             
             await connection.confirmTransaction({
                 signature: signature,
                 commitment: 'confirmed',
             });
-            walletLog(`✅ SOL transaction confirmed. TX: ${signature}`);
+            walletLog(`✅ Transaction confirmed!`);
+            
+            return true; // Indicate success for retry logic
         }
 
         // Auto sender loop
@@ -859,7 +863,7 @@
                 let recipient;
                 if (useRandomAddressCheckbox.checked) {
                     recipient = solanaWeb3.Keypair.generate().publicKey;
-                    walletLog(`Sending tokens to a newly generated random address...`);
+                    walletLog(`Sending tokens to a newly generated random address: ${recipient.toBase58()}`);
                 } else {
                     try {
                         recipient = new solanaWeb3.PublicKey(recipientStr);
@@ -930,12 +934,15 @@
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
 
+                // FIX: Log signature immediately for immediate user feedback
+                walletLog(`📤 Sent ${amount} tokens. Waiting for confirmation... TX: ${signature}`);
+
                 await connection.confirmTransaction({
                     signature: signature,
                     commitment: 'confirmed',
                 });
 
-                walletLog(`✅ Token transaction confirmed. TX: ${signature}`);
+                walletLog(`✅ Token transaction confirmed!`);
                 await fetchBalances(connection, walletProvider.publicKey);
             } catch (e) {
                 walletLog(`❌ Token transfer error: ${e?.message || e}`);
