@@ -426,28 +426,19 @@
 
             const rpc = $("rpcFaucet").value.trim();
             const amountSol = parseFloat($("amtFaucet").value || '0.1');
+            const lamports = Math.floor(amountSol * 1e9);
             const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
             const faucetMode = $("faucetMode").value;
             const claimLimit = parseInt($("faucetClaimLimit").value);
             
             if (!addresses.length) {
                 showMessage('Please enter at least one address for the Faucet.');
-                fLog('Please enter at least one address for the Faucet.');
                 return;
-            }
-            if (isNaN(amountSol) || amountSol <= 0) {
-                 showMessage('Please enter a valid amount of SOL (must be a positive number).');
-                 fLog('Invalid SOL amount entered.');
-                 return;
             }
             if ((faucetMode === 'total' || faucetMode === 'per-wallet') && (isNaN(claimLimit) || claimLimit <= 0)) {
-                showMessage('Please enter a valid number of claims (> 0).');
-                fLog('Invalid claim limit entered.');
+                showMessage('Please enter a valid number of claims.');
                 return;
             }
-
-            // Convert amount to lamports using BigInt for precision
-            const lamports = BigInt(Math.floor(amountSol * 1e9));
             
             faucetRun = true;
             toggleFaucetInputs(true);
@@ -465,15 +456,14 @@
                 // Pick a random address from the list for all modes
                 const randomIndex = Math.floor(Math.random() * addresses.length);
                 const addr = addresses[randomIndex];
+                const pk = new solanaWeb3.PublicKey(addr);
+                
+                // Initialize counter for this address if it doesn't exist
+                if (faucetMode === 'per-wallet' && !claimsPerWallet[addr]) {
+                    claimsPerWallet[addr] = 0;
+                }
                 
                 try {
-                    const pk = new solanaWeb3.PublicKey(addr);
-                    
-                    // Initialize counter for this address if it doesn't exist
-                    if (faucetMode === 'per-wallet' && !claimsPerWallet[addr]) {
-                        claimsPerWallet[addr] = 0;
-                    }
-                    
                     // Check if per-wallet claim limit is reached
                     if (faucetMode === 'per-wallet' && claimsPerWallet[addr] >= claimLimit) {
                          // Find an address that hasn't reached its limit
@@ -597,31 +587,33 @@
                 return;
             }
 
-            const amount = parseFloat(amountStr);
-            if (isNaN(amount) || amount <= 0) {
-                showMessage('Please enter a valid amount of SOL (must be a positive number).');
-                walletLog(`Invalid SOL amount entered.`);
+            if (!useRandomAddressCheckbox.checked && !recipientStr) {
+                showMessage('Please enter a recipient address or check the random address box.');
+                return;
+            }
+            if (!amountStr) {
+                showMessage('Please enter an amount.');
                 return;
             }
 
             try {
                 const connection = new solanaWeb3.Connection($("rpcWallet").value.trim(), { commitment: 'confirmed' });
-                const lamports = BigInt(Math.floor(amount * 1e9));
+                const amount = parseFloat(amountStr);
+                if (isNaN(amount) || amount <= 0) {
+                    showMessage('Please enter a valid amount.');
+                    return;
+                }
+                const lamports = Math.floor(amount * solanaWeb3.LAMPORTS_PER_SOL);
                 
                 let recipient;
                 if (useRandomAddressCheckbox.checked) {
                     recipient = solanaWeb3.Keypair.generate().publicKey;
+                    walletLog(`Sending ${amount.toFixed(6)} SOL to a newly generated random address...`);
                 } else {
                     recipient = new solanaWeb3.PublicKey(recipientStr);
-                    if (recipient.toBase58() === walletProvider.publicKey.toBase58()) {
-                        showMessage("Cannot send SOL to the same address you are connected with.");
-                        walletLog(`Cannot send SOL to the same address you are connected with.`);
-                        return;
-                    }
+                    walletLog(`Sending ${amount.toFixed(6)} SOL to ${recipientStr}...`);
                 }
-                
-                walletLog(`📤 Sending ${amount.toFixed(6)} SOL to ${recipient.toBase58()}...`);
-                
+
                 const transaction = new solanaWeb3.Transaction().add(
                     solanaWeb3.SystemProgram.transfer({
                         fromPubkey: walletProvider.publicKey,
@@ -640,8 +632,8 @@
                     const signedTransaction = await walletProvider.signTransaction(transaction);
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
-                
-                walletLog(`Waiting for confirmation...`);
+
+                walletLog(`📤 Sent ${amount.toFixed(6)} SOL. Waiting for confirmation...`);
                 
                 await connection.confirmTransaction({
                     signature: signature,
@@ -660,7 +652,7 @@
         async function sendRandomSOL(connection, wallet) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
             const amount = rand(0.001, 0.05);
-            const lamports = BigInt(Math.floor(amount * 1e9));
+            const lamports = Math.floor(amount * solanaWeb3.LAMPORTS_PER_SOL);
             
             const transaction = new solanaWeb3.Transaction().add(
                 solanaWeb3.SystemProgram.transfer({
@@ -755,14 +747,7 @@
                 showMessage('Please connect your wallet first.');
                 return;
             }
-
-            const amount = parseFloat(amountStr);
-            if (isNaN(amount) || amount <= 0) {
-                showMessage('Please enter a valid amount of tokens (must be a positive number).');
-                walletLog(`Invalid token amount entered.`);
-                return;
-            }
-            if (!tokenMintStr || (!useRandomAddressCheckbox.checked && !recipientStr)) {
+            if (!tokenMintStr || (!useRandomAddressCheckbox.checked && !recipientStr) || !amountStr) {
                 showMessage('Please fill in all token transfer fields.');
                 return;
             }
@@ -770,20 +755,20 @@
             try {
                 const connection = new solanaWeb3.Connection($("rpcWallet").value.trim(), { commitment: 'confirmed' });
                 const tokenMint = new solanaWeb3.PublicKey(tokenMintStr);
-                
+                const amount = parseFloat(amountStr);
+                if (isNaN(amount) || amount <= 0) {
+                    showMessage('Please enter a valid token amount.');
+                    return;
+                }
+
                 let recipient;
                 if (useRandomAddressCheckbox.checked) {
                     recipient = solanaWeb3.Keypair.generate().publicKey;
+                    walletLog(`Sending tokens to a newly generated random address...`);
                 } else {
                     recipient = new solanaWeb3.PublicKey(recipientStr);
-                     if (recipient.toBase58() === walletProvider.publicKey.toBase58()) {
-                        showMessage("Cannot send tokens to the same address you are connected with.");
-                        walletLog(`Cannot send tokens to the same address you are connected with.`);
-                        return;
-                    }
+                    walletLog(`Sending tokens to ${recipientStr}...`);
                 }
-                
-                walletLog(`📤 Sending ${amount} tokens to ${recipient.toBase58()}...`);
                 
                 // Get the sender's token account
                 const senderTokenAccount = await splToken.getAssociatedTokenAddress(
@@ -816,7 +801,7 @@
 
                 // Add the transfer instruction
                 const mintInfo = await splToken.getMint(connection, tokenMint);
-                const tokenAmount = BigInt(Math.floor(amount * (10 ** mintInfo.decimals))); // Convert to base units
+                const tokenAmount = amount * (10 ** mintInfo.decimals); // Convert to base units
                 
                 transaction.add(
                     splToken.createTransferInstruction(
@@ -831,7 +816,7 @@
                 transaction.feePayer = walletProvider.publicKey;
 
                 // Sign and send the transaction
-                walletLog(`Waiting for confirmation...`);
+                walletLog(`📤 Sending ${amount} tokens. Waiting for confirmation...`);
 
                 let signature;
                 if (walletProvider.signAndSendTransaction) {
