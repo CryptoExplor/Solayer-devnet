@@ -127,6 +127,18 @@
         .faucet-link a:hover {
             text-decoration: none;
         }
+        .status-and-timer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+        }
+        #session-timer {
+            font-weight: bold;
+            color: var(--accent);
+            min-width: 80px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
@@ -189,10 +201,13 @@
             <div class="row" style="margin-top:8px">
                 <button id="resetSession">♻️ Reset Session Counts</button>
             </div>
-            <div class="balance-pills">
-                <span class="pill" id="faucetTotal">Total: 0</span>
-                <span class="pill ok" id="faucetOk">Success: 0</span>
-                <span class="pill err" id="faucetErr">Errors: 0</span>
+            <div class="status-and-timer">
+                <div class="balance-pills">
+                    <span class="pill" id="faucetTotal">Total: 0</span>
+                    <span class="pill ok" id="faucetOk">Success: 0</span>
+                    <span class="pill err" id="faucetErr">Errors: 0</span>
+                </div>
+                <span id="session-timer">⏱ 0s</span>
             </div>
             <div class="row" style="margin-top:8px">
                 <label class="checkbox-label">
@@ -218,10 +233,16 @@
         // Global state variables
         let faucetRun = false;
         let faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
-        let claimsPerSession = {}; // Per-session counter (new)
-        let totalClaimsPerWallet = {}; // Total persistent counter (new)
+        let claimsPerSession = {}; // Per-session counter
+        let totalClaimsPerWallet = {}; // Total persistent counter
         let rpcUrls = [];
         let currentRpcIndex = 0;
+
+        // Timer variables
+        let sessionTimerInterval = null;
+        let sessionStartTime = 0;
+        const COOLDOWN_DURATION_MS = 60000; // 60 seconds cooldown per wallet
+        let walletCooldowns = {};
 
         // Helper function to create a clickable explorer link
         function createExplorerLink(signature) {
@@ -235,8 +256,7 @@
             if (storedTotalClaims) {
                 totalClaimsPerWallet = JSON.parse(storedTotalClaims);
             }
-            // `claimsPerSession` is intentionally not loaded, as per the guide's logic.
-
+            
             updateFaucetStats();
             setupEventListeners();
             handleFaucetModeChange(); // Initialize the faucet UI on page load
@@ -264,7 +284,7 @@
             const downloadLogBtn = $("downloadLog");
             const faucetModeSelect = $("faucetMode");
             const themeToggleBtn = $("themeToggle");
-            const resetSessionBtn = $("resetSession"); // New button
+            const resetSessionBtn = $("resetSession");
 
             // Add handler for addresses textarea to create pills on input
             const addrsFaucetTextarea = $("addrsFaucet");
@@ -281,6 +301,7 @@
                 faucetRun = false; 
                 stopFaucetBtn.textContent = 'Stopping...';
                 stopFaucetBtn.disabled = true;
+                clearInterval(sessionTimerInterval); // Stop the session timer
             };
             clearFaucetBtn.onclick = () => { 
                 $("logFaucet").innerHTML = ''; 
@@ -290,6 +311,7 @@
                 faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
                 totalClaimsPerWallet = {};
                 claimsPerSession = {};
+                walletCooldowns = {}; // Reset cooldowns
                 updateFaucetStats();
                 const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
                 createWalletStatusPills(addresses);
@@ -301,6 +323,7 @@
             // New reset session button handler
             resetSessionBtn.onclick = () => {
                 claimsPerSession = {}; // Reset the session counter
+                walletCooldowns = {}; // Reset cooldowns
                 const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
                 createWalletStatusPills(addresses); // Re-render pills
                 fLog("♻️ Session counts reset.");
@@ -351,8 +374,27 @@
             URL.revokeObjectURL(url);
         }
 
+        // ===== Timer Logic =====
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${seconds}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${seconds}s`;
+            } else {
+                return `${seconds}s`;
+            }
+        }
+
+        function updateSessionTimer() {
+            const elapsedTime = Date.now() - sessionStartTime;
+            $("session-timer").textContent = `⏱ ${formatTime(elapsedTime)}`;
+        }
+
         // ===== Per-Wallet Status Tracking UI Logic =====
-        // Step 4: Show both session and total claims in the UI
         function createWalletStatusPills(addresses) {
             const container = $('wallet-status-container');
             container.innerHTML = ''; // Clear previous pills
@@ -365,7 +407,6 @@
                 const sessionClaims = claimsPerSession[addr] || 0;
                 const totalClaims = totalClaimsPerWallet[addr] || 0;
 
-                // Always show both session and total claims
                 const textContent = `${addr.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims})`;
 
                 pill.textContent = textContent;
@@ -381,25 +422,32 @@
                 const totalClaims = totalClaimsPerWallet[address] || 0;
                 const retries = faucetStats.retries[address] || 0;
 
-                // Always show both session and total claims
                 let textContent = `${address.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims})`;
-
-                if (status === 'ok') {
-                    textContent += ` ✅`;
-                    pill.className = `pill ok`;
-                } else if (status === 'err') {
-                    textContent += ` ❌`;
-                    pill.className = `pill err`;
-                    if (retries > 0) {
-                        textContent += ` (retries: ${retries})`;
-                    }
-                } else if (status === 'skipped') {
-                    textContent += ` ⏭`;
-                    pill.className = `pill`;
-                } else if (status === 'active') {
+                
+                const cooldownEnd = walletCooldowns[address];
+                if (cooldownEnd && cooldownEnd > Date.now()) {
+                    const remaining = Math.max(0, cooldownEnd - Date.now());
+                    const remainingSeconds = Math.ceil(remaining / 1000);
+                    textContent += ` ⏳ ${remainingSeconds}s`;
                     pill.className = `pill active`;
-                } else { // Idle state for cleanup
-                    pill.className = `pill`;
+                } else {
+                    if (status === 'ok') {
+                        textContent += ` ✅`;
+                        pill.className = `pill ok`;
+                    } else if (status === 'err') {
+                        textContent += ` ❌`;
+                        pill.className = `pill err`;
+                        if (retries > 0) {
+                            textContent += ` (retries: ${retries})`;
+                        }
+                    } else if (status === 'skipped') {
+                        textContent += ` ⏭`;
+                        pill.className = `pill`;
+                    } else if (status === 'active') {
+                        pill.className = `pill active`;
+                    } else { // Idle state for cleanup
+                        pill.className = `pill`;
+                    }
                 }
                 
                 pill.textContent = textContent;
@@ -413,12 +461,10 @@
             const logElement = $("logFaucet");
             logElement.innerHTML += `[${ts}] ${msg}<br>`;
             
-            // Log overflow cleanup: keep only the last 1000 lines
             if (logElement.childNodes.length > 1000) {
                 logElement.removeChild(logElement.firstChild);
             }
             
-            // Check the new toggle before auto-scrolling
             if (!$("pauseScroll").checked) {
                 logElement.scrollTop = logElement.scrollHeight;
             }
@@ -428,9 +474,7 @@
             $("faucetTotal").textContent = `Total: ${faucetStats.total}`;
             $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
             $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
-            // Persist faucet stats to localStorage
             localStorage.setItem("faucetStats", JSON.stringify(faucetStats));
-            // Persist total claims per wallet
             localStorage.setItem("totalClaimsPerWallet", JSON.stringify(totalClaimsPerWallet));
         }
 
@@ -456,10 +500,9 @@
         }
 
         async function faucetLoop(addresses) {
-            // Step 3: Reset session counter on app start
             claimsPerSession = {};
+            walletCooldowns = {};
             
-            // Initialize pills based on addresses
             createWalletStatusPills(addresses);
 
             const rpcInput = $("rpcFaucet").value.trim();
@@ -491,10 +534,14 @@
             faucetRun = true;
             toggleFaucetInputs(true);
             
+            // Start the session timer
+            sessionStartTime = Date.now();
+            sessionTimerInterval = setInterval(updateSessionTimer, 1000);
+            
             currentRpcIndex = 0;
             let connection = new solanaWeb3.Connection(rpcUrls[currentRpcIndex], { commitment: 'confirmed' });
             fLog(`Connecting to RPC → ${rpcUrls[currentRpcIndex]}`);
-            
+
             while (faucetRun) {
                 if (faucetMode === 'total' && faucetStats.ok >= claimLimit) {
                     fLog(`✅ Total claim limit of ${claimLimit} reached. Stopping loop.`);
@@ -502,9 +549,24 @@
                     break;
                 }
                 
-                // Pick a random address from the list for all modes
-                const randomIndex = Math.floor(Math.random() * addresses.length);
-                const addr = addresses[randomIndex];
+                // Filter out addresses that are currently on cooldown
+                const availableAddrs = addresses.filter(addr => !walletCooldowns[addr] || walletCooldowns[addr] <= Date.now());
+                
+                if (faucetMode === 'per-wallet' && availableAddrs.every(addr => claimsPerSession[addr] >= claimLimit)) {
+                    fLog('All available wallets have reached their claim limit. Stopping loop.');
+                    faucetRun = false;
+                    break;
+                }
+                
+                if (availableAddrs.length === 0) {
+                    fLog(`All wallets are on cooldown. Waiting for a wallet to become available.`);
+                    await sleep(1000);
+                    continue;
+                }
+                
+                // Pick a random available address
+                const randomIndex = Math.floor(Math.random() * availableAddrs.length);
+                const addr = availableAddrs[randomIndex];
                 
                 let pk;
                 try {
@@ -512,33 +574,21 @@
                 } catch (e) {
                     fLog(`❌ Skipping invalid address: ${addr}. Error: ${e.message}`);
                     updateWalletStatusUI(addr, 'err', `Invalid address.`);
-                    await sleep(1000); // Short delay to prevent hammering
+                    await sleep(1000);
                     continue;
                 }
                 
-                // Initialize counters if they don't exist
                 if (!claimsPerSession[addr]) claimsPerSession[addr] = 0;
                 if (!totalClaimsPerWallet[addr]) totalClaimsPerWallet[addr] = 0;
                 
-                // Check if per-wallet claim limit is reached
                 if (faucetMode === 'per-wallet' && claimsPerSession[addr] >= claimLimit) {
-                    // Find an address that hasn't reached its limit
-                    const availableAddrs = addresses.filter(a => claimsPerSession[a] < claimLimit);
-                    if (availableAddrs.length === 0) {
-                        fLog('All wallets have reached their claim limit. Stopping loop.');
-                        faucetRun = false;
-                        break;
-                    }
-                    // Pick a random address from the remaining ones
-                    const nextAddr = availableAddrs[Math.floor(Math.random() * availableAddrs.length)];
-                    fLog(`Skipping ${addr}. Trying next address: ${nextAddr}`);
-                    await sleep(1000); // Short delay to prevent hammering
+                    fLog(`Skipping ${addr}. Per-wallet limit of ${claimLimit} reached.`);
+                    await sleep(1000);
                     continue;
                 }
                 
                 updateWalletStatusUI(addr, 'active', `Attempting airdrop...`);
 
-                // === Balance Check Improvement ===
                 try {
                     const balance = await connection.getBalance(pk);
                     if (balance > skipLamports) {
@@ -561,25 +611,22 @@
                     try {
                         fLog(`Attempt ${retryCount + 1}: Waiting for confirmation...`);
                         const sig = await connection.requestAirdrop(pk, lamports);
-                        // Use newer confirmTransaction syntax
                         await connection.confirmTransaction(sig, 'confirmed');
                         fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
                         airdropSuccess = true;
                         break;
                     } catch (e) {
-                        // Capped exponential backoff
                         const delay = Math.min(Math.pow(2, retryCount) * 1000, 30000);
                         fLog(`❌ Error on attempt ${retryCount + 1}: ${e?.message || e}`);
                         
-                        // Check if RPC failed entirely
-                        if (e.message && e.message.includes('HTTP 502 Bad Gateway') || e.message.includes('429 Too Many Requests') || e.message.includes('failed to get a response')) {
+                        if (e.message && (e.message.includes('HTTP 502 Bad Gateway') || e.message.includes('429 Too Many Requests') || e.message.includes('failed to get a response'))) {
                             connection = switchRpc();
                         } else {
                             fLog(`Retrying in ${delay / 1000}s...`);
                             await sleep(delay);
                         }
 
-                        if (!faucetRun) { // Check for stop command after delay
+                        if (!faucetRun) {
                             break;
                         }
                         retryCount++;
@@ -588,23 +635,24 @@
                 
                 if (airdropSuccess) {
                     faucetStats.ok++;
-                    faucetStats.retries[addr] = 0; // Reset retries on success
+                    faucetStats.retries[addr] = 0;
                     
-                    // Step 2: Increment both counters when a claim succeeds
                     claimsPerSession[addr]++;
                     totalClaimsPerWallet[addr] = (totalClaimsPerWallet[addr] || 0) + 1;
+
+                    // Set cooldown for this wallet
+                    walletCooldowns[addr] = Date.now() + COOLDOWN_DURATION_MS;
                     
                     updateWalletStatusUI(addr, 'ok', `Airdrop successful.`);
                 } else {
                     faucetStats.err++;
-                    faucetStats.retries[addr] = (faucetStats.retries[addr] || 0) + 1; // Increment retries
+                    faucetStats.retries[addr] = (faucetStats.retries[addr] || 0) + 1;
                     fLog(`❌ Failed to airdrop to ${addr} after multiple retries.`);
                     updateWalletStatusUI(addr, 'err', `Airdrop failed.`);
                 }
-                // Step 6: Persist only totals
-                updateFaucetStats(); // This function now handles persistence for both total stats and totalClaimsPerWallet
                 
-                // === Configurable Random Delay Improvement ===
+                updateFaucetStats();
+                
                 const [min, max] = minDelay > maxDelay ? [maxDelay, minDelay] : [minDelay, maxDelay];
                 const delay = Math.floor(rand(min, max));
                 fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
@@ -614,7 +662,8 @@
             }
             
             fLog('🛑 Faucet loop stopped.');
-            // Check if the loop completed naturally or was stopped manually
+            clearInterval(sessionTimerInterval); // Stop the session timer
+            
             const perWalletLimitReached = faucetMode === 'per-wallet' && addresses.every(addr => claimsPerSession[addr] >= claimLimit);
             const totalLimitReached = faucetMode === 'total' && faucetStats.ok >= claimLimit;
             const summaryMessage = (totalLimitReached || perWalletLimitReached)
@@ -622,12 +671,30 @@
                 : `Stopped manually: ${faucetStats.total} total, ${faucetStats.ok} success, ${faucetStats.err} errors.`;
             showMessage(summaryMessage);
             
-            // Cleanup: reset pills and localStorage
             addresses.forEach(addr => updateWalletStatusUI(addr, 'idle', 'Idle'));
             
             toggleFaucetInputs(false);
             $('stopFaucet').textContent = '⏹ Stop';
         }
+
+        // A separate interval to update cooldown timers
+        setInterval(() => {
+            if (faucetRun) {
+                const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+                addresses.forEach(addr => {
+                    const pill = $(`status-${addr}`);
+                    if (pill) {
+                        const cooldownEnd = walletCooldowns[addr];
+                        if (cooldownEnd && cooldownEnd > Date.now()) {
+                            const remaining = Math.max(0, cooldownEnd - Date.now());
+                            const remainingSeconds = Math.ceil(remaining / 1000);
+                            const currentText = pill.textContent.split(' ')[0];
+                            pill.textContent = `${currentText} ⏳ ${remainingSeconds}s`;
+                        }
+                    }
+                });
+            }
+        }, 1000);
     </script>
 </body>
 </html>
