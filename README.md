@@ -71,5 +71,3 @@ This project is for **educational and testing purposes only**.
 
 MIT © 2025 — Feel free to fork, adapt, and improve.
  
-> *“Browser-based Solayer Devnet faucet auto-claimer with multi-wallet support, retries, and live logging.”*
-```
