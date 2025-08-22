@@ -1,5 +1,3 @@
-
-````markdown
 # 🌊 Solayer Devnet Faucet Auto-Claimer  
 
 ![Static Badge](https://img.shields.io/badge/status-active-brightgreen)  
