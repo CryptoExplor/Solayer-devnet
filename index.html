@@ -147,6 +147,26 @@
             text-align: center;
             flex-grow: 1;
         }
+        #errorAnalytics {
+            margin-top: 12px;
+            background: var(--log-bg);
+            border: 1px solid #1a2349;
+            border-radius: 12px;
+            padding: 10px;
+            min-height: 50px;
+        }
+        .light-theme #errorAnalytics {
+            border-color: #ddd;
+        }
+        #errorAnalytics h3 {
+            margin: 0 0 8px;
+            font-size: 16px;
+        }
+        #errorAnalytics ul {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
     </style>
 </head>
 <body>
@@ -209,7 +229,9 @@
             <div class="row" style="margin-top:8px">
                 <button id="startFaucet">▶ Start Faucet Loop</button>
                 <button id="stopFaucet" disabled>⏹ Stop</button>
-                <button id="clearFaucetLog">🧹 Clear Log</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+                <button id="clearFaucetLog">🧹 Clear Log & Stats</button>
                 <button id="downloadLog">⬇️ Download Log</button>
             </div>
             <div class="row" style="margin-top:8px">
@@ -230,6 +252,16 @@
                 </label>
                 <button id="themeToggle" style="width: auto;">🌙 Toggle Theme</button>
             </div>
+            
+            <h2 style="margin-top: 20px;">Error Analytics</h2>
+            <div id="errorAnalytics" class="card">
+                <h3>Breakdown of Airdrop Failures</h3>
+                <ul id="errorList">
+                    <!-- Error stats will be dynamically inserted here -->
+                </ul>
+            </div>
+            
+            <h2 style="margin-top: 20px;">Activity Log</h2>
             <pre id="logFaucet"></pre>
             <h2 style="margin-top: 20px;">Session History</h2>
             <pre id="session-history-log"></pre>
@@ -249,11 +281,10 @@
 
         // Global state variables
         let faucetRun = false;
-        let faucetStats = { total: 0, success: 0, fail: 0, retries: {} };
+        let faucetStats = { total: 0, success: 0, fail: 0, retries: {}, errors: {} };
         let claimsPerSession = {}; // Per-session counter
         let totalClaimsPerWallet = {}; // Total persistent counter
         let rpcUrls = [];
-        let currentRpcIndex = 0;
 
         // Timer variables
         let sessionTimerInterval = null;
@@ -334,12 +365,13 @@
                 localStorage.removeItem("faucetStats");
                 localStorage.removeItem("totalClaimsPerWallet");
                 localStorage.removeItem(SESSION_HISTORY_KEY);
-                faucetStats = { total: 0, success: 0, fail: 0, retries: {} };
+                faucetStats = { total: 0, success: 0, fail: 0, retries: {}, errors: {} };
                 totalClaimsPerWallet = {};
                 claimsPerSession = {};
                 walletCooldowns = {}; // Reset cooldowns
                 sessionHistory = []; // Clear session history
                 updateFaucetStats();
+                renderErrorAnalytics(); // Clear error analytics
                 const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
                 createWalletStatusPills(addresses);
                 renderSessionHistory();
@@ -355,10 +387,12 @@
                 faucetStats.success = 0; // Reset session success count
                 faucetStats.fail = 0; // Reset session error count
                 faucetStats.total = 0; // Reset session total count
+                faucetStats.errors = {}; // Reset error analytics
                 const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
                 createWalletStatusPills(addresses); // Re-render pills
                 fLog("♻️ Session counts reset.");
                 updateFaucetStats();
+                renderErrorAnalytics();
             };
         }
 
@@ -439,6 +473,30 @@
                 logText += '\n';
             });
             historyLog.textContent = logText;
+        }
+        
+        // ===== Error Analytics Logic =====
+        function incrementErrorCount(errorType) {
+            faucetStats.errors[errorType] = (faucetStats.errors[errorType] || 0) + 1;
+            renderErrorAnalytics();
+        }
+
+        function renderErrorAnalytics() {
+            const errorList = $("errorList");
+            errorList.innerHTML = ''; // Clear previous list
+            
+            const sortedErrors = Object.entries(faucetStats.errors).sort(([, a], [, b]) => b - a);
+            
+            if (sortedErrors.length === 0) {
+                errorList.innerHTML = '<li>No errors recorded yet.</li>';
+                return;
+            }
+            
+            sortedErrors.forEach(([errorType, count]) => {
+                const li = document.createElement('li');
+                li.textContent = `${errorType}: ${count}`;
+                errorList.appendChild(li);
+            });
         }
 
         // ===== Timer Logic =====
@@ -581,12 +639,10 @@
             $("stopFaucet").disabled = !disabled;
         }
 
-        // Function to switch to the next RPC in the list
-        function switchRpc() {
-            currentRpcIndex = (currentRpcIndex + 1) % rpcUrls.length;
-            const newRpc = rpcUrls[currentRpcIndex];
-            fLog(`⚠️ RPC failed. Switching to next RPC: ${newRpc}`);
-            return new solanaWeb3.Connection(newRpc, { commitment: 'confirmed' });
+        // Function to select a random RPC from the list
+        function getRandomRpc() {
+            const randomIndex = Math.floor(Math.random() * rpcUrls.length);
+            return new solanaWeb3.Connection(rpcUrls[randomIndex], { commitment: 'confirmed' });
         }
 
         async function faucetLoop(addresses) {
@@ -629,9 +685,7 @@
             sessionStartTime = Date.now();
             sessionTimerInterval = setInterval(updateSessionTimer, 1000);
             
-            currentRpcIndex = 0;
-            let connection = new solanaWeb3.Connection(rpcUrls[currentRpcIndex], { commitment: 'confirmed' });
-            fLog(`Connecting to RPC → ${rpcUrls[currentRpcIndex]}`);
+            fLog(`Connecting to RPC(s) → ${rpcUrls.join(', ')}`);
 
             while (faucetRun) {
                 const sessionClaims = Object.values(claimsPerSession).reduce((sum, count) => sum + count, 0);
@@ -682,7 +736,9 @@
                 updateWalletStatusUI(addr, 'active', `Attempting airdrop...`);
 
                 try {
-                    const balance = await connection.getBalance(pk);
+                    // Use a new connection for each balance check to spread load
+                    const tempConnection = getRandomRpc();
+                    const balance = await tempConnection.getBalance(pk);
                     if (balance > skipLamports) {
                         fLog(`⏭ Skipping ${addr}. Balance (${(balance / 1e9).toFixed(2)} SOL) is already sufficient.`);
                         updateWalletStatusUI(addr, 'skipped', `Balance sufficient: ${(balance / 1e9).toFixed(2)} SOL`);
@@ -699,10 +755,11 @@
                 fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
                 
                 let airdropSuccess = false;
-                let retryCount = faucetStats.retries[addr] || 0;
+                let retryCount = 0;
                 while (retryCount < 5 && faucetRun) {
                     try {
-                        fLog(`Attempt ${retryCount + 1}: Waiting for confirmation...`);
+                        const connection = getRandomRpc(); // Randomly pick an RPC for the airdrop
+                        fLog(`Attempt ${retryCount + 1}: Using RPC ${connection._rpcEndpoint}`);
                         const sig = await connection.requestAirdrop(pk, lamports);
                         await connection.confirmTransaction(sig, 'confirmed');
                         fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
@@ -712,12 +769,13 @@
                         const delay = Math.min(Math.pow(2, retryCount) * 1000, 30000);
                         fLog(`❌ Error on attempt ${retryCount + 1}: ${e?.message || e}`);
                         
-                        if (e.message && (e.message.includes('HTTP 502 Bad Gateway') || e.message.includes('429 Too Many Requests') || e.message.includes('failed to get a response'))) {
-                            connection = switchRpc();
-                        } else {
-                            fLog(`Retrying in ${delay / 1000}s...`);
-                            await sleep(delay);
-                        }
+                        // Categorize and log the error
+                        const errorMessage = e?.message || 'Unknown Error';
+                        const errorCategory = categorizeError(errorMessage);
+                        incrementErrorCount(errorCategory);
+                        
+                        fLog(`Retrying in ${delay / 1000}s...`);
+                        await sleep(delay);
 
                         if (!faucetRun) {
                             break;
@@ -728,7 +786,6 @@
                 
                 if (airdropSuccess) {
                     faucetStats.success++;
-                    faucetStats.retries[addr] = 0;
                     
                     claimsPerSession[addr]++;
                     totalClaimsPerWallet[addr] = (totalClaimsPerWallet[addr] || 0) + 1;
@@ -739,7 +796,6 @@
                     updateWalletStatusUI(addr, 'success', `Airdrop successful.`);
                 } else {
                     faucetStats.fail++;
-                    faucetStats.retries[addr] = (faucetStats.retries[addr] || 0) + 1;
                     fLog(`❌ Failed to airdrop to ${addr} after multiple retries.`);
                     updateWalletStatusUI(addr, 'fail', `Airdrop failed.`);
                 }
@@ -770,8 +826,19 @@
             toggleFaucetInputs(false);
             $('stopFaucet').textContent = '⏹ Stop';
         }
+        
+        function categorizeError(errorMessage) {
+            errorMessage = errorMessage.toLowerCase();
+            if (errorMessage.includes('429 too many requests')) return '429 Too Many Requests';
+            if (errorMessage.includes('http 502 bad gateway')) return '502 Bad Gateway';
+            if (errorMessage.includes('service unavailable')) return 'Service Unavailable';
+            if (errorMessage.includes('failed to get a response')) return 'Failed to Get Response';
+            if (errorMessage.includes('airdrop request refused')) return 'Airdrop Refused';
+            if (errorMessage.includes('invalid publickey')) return 'Invalid Address';
+            return 'Other/Unknown Error';
+        }
 
-        // A separate interval to update cooldown timers
+        // A separate interval to update cooldown timers and sort pills
         setInterval(() => {
             if (faucetRun) {
                 const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
