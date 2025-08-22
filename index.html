@@ -236,7 +236,7 @@
             const startFaucetBtn = $("startFaucet");
             const stopFaucetBtn = $("stopFaucet");
             const clearFaucetBtn = $("clearFaucetLog");
-            const downloadLogBtn = $("downloadLog"); // New button
+            const downloadLogBtn = $("downloadLog");
             const faucetModeSelect = $("faucetMode");
             
             // Add handler for addresses textarea to create pills on input
@@ -266,7 +266,7 @@
                 const addresses = addrsFaucetTextarea.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
                 createWalletStatusPills(addresses);
             };
-            downloadLogBtn.onclick = downloadLog; // New event listener for the download button
+            downloadLogBtn.onclick = downloadLog;
             faucetModeSelect.onchange = handleFaucetModeChange;
         }
 
@@ -350,6 +350,12 @@
                     pill.className = `pill`; // No special color for skipped
                 } else if (status === 'active') {
                     pill.className = `pill active`;
+                } else { // Idle state for cleanup
+                    pill.className = `pill`;
+                    textContent = `${address.substring(0, 4)}...`;
+                    if (faucetMode === 'per-wallet') {
+                        textContent += ` (${claims}/${limit})`;
+                    }
                 }
                 
                 pill.textContent = textContent;
@@ -491,7 +497,8 @@
                     try {
                         fLog(`Attempt ${retryCount + 1}: Waiting for confirmation...`);
                         const sig = await connection.requestAirdrop(pk, lamports);
-                        await connection.confirmTransaction({ signature: sig, commitment: 'confirmed' });
+                        // Use newer confirmTransaction syntax
+                        await connection.confirmTransaction(sig, 'confirmed');
                         fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
                         airdropSuccess = true;
                         break;
@@ -525,7 +532,8 @@
                 updateFaucetStats();
                 
                 // === Configurable Random Delay Improvement ===
-                const delay = Math.floor(rand(minDelay, maxDelay));
+                const [min, max] = minDelay > maxDelay ? [maxDelay, minDelay] : [minDelay, maxDelay];
+                const delay = Math.floor(rand(min, max));
                 fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
                 if (faucetRun) {
                     await sleep(delay);
@@ -535,6 +543,11 @@
             fLog('🛑 Faucet loop stopped.');
             // Add a final summary message
             showMessage(`Session complete: ${faucetStats.total} total, ${faucetStats.ok} success, ${faucetStats.err} errors.`);
+            
+            // Cleanup: reset pills and localStorage
+            addresses.forEach(addr => updateWalletStatusUI(addr, 'idle', 'Idle'));
+            localStorage.removeItem("faucetStats");
+            localStorage.removeItem("claimsPerWallet");
             
             toggleFaucetInputs(false);
             $('stopFaucet').textContent = '⏹ Stop';
