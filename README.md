@@ -1,8 +1,6 @@
 # 🌊 Solayer Devnet Faucet Auto-Claimer  
 
-![Static Badge](https://img.shields.io/badge/status-active-brightgreen)  
-![Static Badge](https://img.shields.io/badge/license-MIT-blue)  
-![Static Badge](https://img.shields.io/badge/solana-devnet-orange)
+![Static Badge](https://img.shields.io/badge/status-active-brightgreen)   ![Static Badge](https://img.shields.io/badge/license-MIT-blue)   ![Static Badge](https://img.shields.io/badge/solayer-devnet-green)
 
 A lightweight **browser-based auto faucet claimer** for the [Solayer Devnet](https://explorer.solayer.org/faucet).  
 This tool automatically requests SOL airdrops for multiple wallets with configurable claim modes, retry logic, and randomized delays to simulate natural usage.  
@@ -28,8 +26,8 @@ This tool automatically requests SOL airdrops for multiple wallets with configur
 
 ### 1. Clone or download the repo
 ```bash
-git clone https://github.com/<your-username>/solayer-faucet-auto.git
-cd solayer-faucet-auto
+git clone https://github.com/CryptoExplor/Solayer-devnet-faucet.git
+cd Solayer-devnet-faucet
 ````
 
 ### 2. Run locally
