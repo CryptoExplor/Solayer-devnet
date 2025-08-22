@@ -636,14 +636,12 @@
                     const remaining = Math.max(0, cooldownEnd - Date.now());
                     const remainingSeconds = Math.ceil(remaining / 1000);
                     textContent += ` ⏳ ${remainingSeconds}s`;
-                    pill.className = `pill cooldown`;
+                    pill.className = `pill status-cooldown`;
                 } else {
-                    if (status === 'ok') {
-                        textContent += ` ✅`;
-                        pill.className = `pill ok`;
-                    } else if (status === 'err') {
-                        textContent += ` ❌`;
-                        pill.className = `pill err`;
+                    if (status === 'success') {
+                        pill.className = `pill status-success`;
+                    } else if (status === 'fail') {
+                        pill.className = `pill status-fail`;
                         if (retries > 0) {
                             textContent += ` (retries: ${retries})`;
                         }
@@ -651,7 +649,7 @@
                         textContent += ` ⏭`;
                         pill.className = `pill`;
                     } else if (status === 'active') {
-                        pill.className = `pill active`;
+                        pill.className = `pill status-active`;
                     } else { // Idle state for cleanup
                         pill.className = `pill`;
                     }
