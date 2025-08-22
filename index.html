@@ -369,6 +369,11 @@
             const logElement = $("logFaucet");
             logElement.innerHTML += `[${ts}] ${msg}<br>`;
             
+            // Log overflow cleanup: keep only the last 1000 lines
+            if (logElement.childNodes.length > 1000) {
+                logElement.removeChild(logElement.firstChild);
+            }
+            
             // Check the new toggle before auto-scrolling
             if (!$("pauseScroll").checked) {
                 logElement.scrollTop = logElement.scrollHeight;
@@ -541,8 +546,13 @@
             }
             
             fLog('🛑 Faucet loop stopped.');
-            // Add a final summary message
-            showMessage(`Session complete: ${faucetStats.total} total, ${faucetStats.ok} success, ${faucetStats.err} errors.`);
+            // Check if the loop completed naturally or was stopped manually
+            const perWalletLimitReached = faucetMode === 'per-wallet' && addresses.every(addr => claimsPerWallet[addr] >= claimLimit);
+            const totalLimitReached = faucetMode === 'total' && faucetStats.ok >= claimLimit;
+            const summaryMessage = (totalLimitReached || perWalletLimitReached)
+                ? `Session complete: ${faucetStats.total} total, ${faucetStats.ok} success, ${faucetStats.err} errors.`
+                : `Stopped manually: ${faucetStats.total} total, ${faucetStats.ok} success, ${faucetStats.err} errors.`;
+            showMessage(summaryMessage);
             
             // Cleanup: reset pills and localStorage
             addresses.forEach(addr => updateWalletStatusUI(addr, 'idle', 'Idle'));
