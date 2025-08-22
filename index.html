@@ -35,6 +35,13 @@
         .ok{border-color:#1e6f4f;color:#a9f3cd}
         .err{border-color:#7a2b2b;color:#ffb6b6}
         pre{height:360px;overflow:auto;background:#091130;border:1px solid #1a2349;border-radius:12px;padding:10px;white-space:pre-wrap; min-height: 150px;}
+        pre a {
+            color: var(--accent);
+            text-decoration: underline;
+        }
+        pre a:hover {
+            text-decoration: none;
+        }
         .hidden{display:none}
         #message-box {
             position: fixed;
@@ -96,6 +103,18 @@
             background: #2a345a;
             margin: 20px 0;
         }
+        .faucet-link {
+            text-align: center;
+            margin-bottom: 12px;
+        }
+        .faucet-link a {
+            color: var(--accent);
+            text-decoration: underline;
+            font-weight: bold;
+        }
+        .faucet-link a:hover {
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
@@ -108,6 +127,9 @@
         
         <!-- Faucet Tab -->
         <section id="panel-faucet" class="card">
+            <div class="faucet-link">
+                Official Faucet: <a href="https://explorer.solayer.org/faucet" target="_blank">https://explorer.solayer.org/faucet</a>
+            </div>
             <p class="muted">Runs indefinitely with random 1–5s delay across all addresses.</p>
             <div style="margin-bottom:8px">
                 <label>Claim Mode</label>
@@ -245,6 +267,12 @@
         let claimsPerWallet = {};
         let senderStats = { sent: 0, ok: 0, err: 0, retries: {} };
 
+        // Helper function to create a clickable explorer link
+        function createExplorerLink(signature) {
+            const explorerBaseUrl = "https://explorer.solayer.org";
+            return `<a href="${explorerBaseUrl}/tx/${signature}" target="_blank">${signature.substring(0, 8)}...</a>`;
+        }
+
         window.onload = function() {
             // Reset counters on page load
             faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
@@ -291,7 +319,7 @@
                 stopFaucetBtn.textContent = 'Stopping...';
                 stopFaucetBtn.disabled = true;
             };
-            clearFaucetBtn.onclick = () => { $("logFaucet").textContent = ''; };
+            clearFaucetBtn.onclick = () => { $("logFaucet").innerHTML = ''; };
             faucetModeSelect.onchange = handleFaucetModeChange;
         
             // Wallet Buttons
@@ -395,7 +423,7 @@
                     }
                     break;
                 case 'token':
-                    $('token-ui').classList.remove('hidden');
+                    $('token-ui').classList.add('hidden');
                     if (walletProvider) {
                         $('sendTokenBtn').disabled = false;
                     }
@@ -407,7 +435,7 @@
         function fLog(msg) {
             const ts = new Date().toLocaleTimeString();
             const logElement = $("logFaucet");
-            logElement.textContent += `[${ts}] ${msg}\n`;
+            logElement.innerHTML += `[${ts}] ${msg}<br>`;
             logElement.scrollTop = logElement.scrollHeight;
         }
         
@@ -494,7 +522,7 @@
                         break;
                     }
                     // Pick a random address from the remaining ones
-                    const nextAddr = availableAddableAddrs[Math.floor(Math.random() * availableAddrs.length)];
+                    const nextAddr = availableAddrs[Math.floor(Math.random() * availableAddrs.length)];
                     fLog(`Skipping ${addr}. Trying next address: ${nextAddr}`);
                     await sleep(1000); // Short delay to prevent hammering
                     continue;
@@ -511,7 +539,7 @@
                         fLog(`Attempt ${retryCount + 1}: Waiting for confirmation...`);
                         const sig = await connection.requestAirdrop(pk, lamports);
                         await connection.confirmTransaction({ signature: sig, commitment: 'confirmed' });
-                        fLog(`✅ Airdrop confirmed! TX: ${sig}`);
+                        fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
                         airdropSuccess = true;
                         break;
                     } catch (e) {
@@ -552,7 +580,7 @@
         function walletLog(msg) {
             const ts = new Date().toLocaleTimeString();
             const logElement = $("logWallet");
-            logElement.textContent += `[${ts}] ${msg}\n`;
+            logElement.innerHTML += `[${ts}] ${msg}<br>`;
             logElement.scrollTop = logElement.scrollHeight;
         }
 
@@ -684,8 +712,7 @@
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
 
-                // FIX: Log signature immediately for immediate user feedback
-                walletLog(`📤 Sent ${amount.toFixed(6)} SOL. Waiting for confirmation... TX: ${signature}`);
+                walletLog(`📤 Sent ${amount.toFixed(6)} SOL. Waiting for confirmation... TX: ${createExplorerLink(signature)}`);
                 
                 await connection.confirmTransaction({
                     signature: signature,
@@ -728,8 +755,7 @@
                 signature = await connection.sendRawTransaction(signedTransaction.serialize());
             }
 
-            // FIX: Log signature immediately for immediate user feedback
-            walletLog(`📤 Sent ${amount.toFixed(6)} SOL to ${recipient.toBase58()}. TX: ${signature}`);
+            walletLog(`📤 Sent ${amount.toFixed(6)} SOL to ${recipient.toBase58()}. TX: ${createExplorerLink(signature)}`);
             
             await connection.confirmTransaction({
                 signature: signature,
@@ -924,8 +950,6 @@
                 transaction.feePayer = walletProvider.publicKey;
 
                 // Sign and send the transaction
-                walletLog(`📤 Sending ${amount} tokens. Waiting for confirmation...`);
-
                 let signature;
                 if (walletProvider.signAndSendTransaction) {
                     ({ signature } = await walletProvider.signAndSendTransaction(transaction));
@@ -934,8 +958,7 @@
                     signature = await connection.sendRawTransaction(signedTransaction.serialize());
                 }
 
-                // FIX: Log signature immediately for immediate user feedback
-                walletLog(`📤 Sent ${amount} tokens. Waiting for confirmation... TX: ${signature}`);
+                walletLog(`📤 Sending ${amount} tokens. Waiting for confirmation... TX: ${createExplorerLink(signature)}`);
 
                 await connection.confirmTransaction({
                     signature: signature,
