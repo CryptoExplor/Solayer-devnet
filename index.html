@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Solayer Devnet — Faucet & SOL Sender</title>
+    <title>Solayer Devnet — Faucet & Wallet</title>
     <!-- Solana Web3 library -->
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+    <!-- SPL Token library -->
+    <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.js"></script>
     <!-- Buffer polyfill -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/buffer/6.0.3/buffer.min.js"></script>
     <script>
@@ -88,14 +90,20 @@
         .checkbox-label input {
             width: auto;
         }
+        .section-separator {
+            border: 0;
+            height: 1px;
+            background: #2a345a;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
     <div class="wrap">
-        <h1>Solayer Devnet — Faucet & SOL Sender</h1>
+        <h1>Solayer Devnet — Faucet & Wallet</h1>
         <div class="tabs">
             <button class="tab active" id="tab-faucet">Faucet Auto‑Claimer</button>
-            <button class="tab" id="tab-sender">SOL Sender (Auto & Manual)</button>
+            <button class="tab" id="tab-wallet">Wallet & Token Operations</button>
         </div>
         
         <!-- Faucet Tab -->
@@ -138,18 +146,11 @@
             <pre id="logFaucet"></pre>
         </section>
         
-        <!-- Sender Tab -->
-        <section id="panel-sender" class="card hidden">
+        <!-- Wallet & Token Operations Tab -->
+        <section id="panel-wallet" class="card hidden">
             <div style="margin-bottom:8px">
                 <label>RPC URL</label>
-                <input id="rpcSender" value="https://devnet-rpc.solayer.org" />
-            </div>
-            <div style="margin-top:8px">
-                <label>Send Mode</label>
-                <select id="modeSender">
-                    <option value="auto">Auto SOL Transfer (Random)</option>
-                    <option value="manual" selected>Manual SOL Transfer (Input)</option>
-                </select>
+                <input id="rpcWallet" value="https://devnet-rpc.solayer.org" />
             </div>
             <div style="margin-top:8px">
                 <button id="connectWalletBtn">🔗 Connect Wallet</button>
@@ -160,9 +161,37 @@
             <div class="balance-pills">
                 <span class="pill" id="solBalancePill">SOL: 0.000</span>
             </div>
-            
-            <!-- Auto Transfer UI -->
-            <div id="auto-transfer-ui" class="hidden">
+
+            <!-- Choose Mode -->
+            <hr class="section-separator">
+            <h3>Operations</h3>
+            <div style="margin-top:8px">
+                <label>Operation Mode</label>
+                <select id="modeWallet">
+                    <option value="manual-sol" selected>Manual SOL Transfer</option>
+                    <option value="auto-sol">Auto SOL Transfer</option>
+                    <option value="token">SPL Token Transfer</option>
+                </select>
+            </div>
+
+            <!-- Manual SOL Transfer Section -->
+            <div id="manual-sol-ui">
+                <p class="muted">Send a specific amount of SOL to a specific address or a random one.</p>
+                <div class="checkbox-label">
+                    <input type="checkbox" id="useRandomAddress" style="width: auto;"/>
+                    <label for="useRandomAddress">Use a random address</label>
+                </div>
+                <label style="margin-top:8px">Recipient Address</label>
+                <input id="recipientAddressSol" placeholder="Enter recipient address..." />
+                <label style="margin-top:8px">Amount (SOL)</label>
+                <input id="sendAmountSol" type="number" step="0.001" placeholder="0.1" />
+                <div style="margin-top:8px">
+                    <button id="sendSolBtn" disabled>Send SOL</button>
+                </div>
+            </div>
+
+            <!-- Auto SOL Transfer Section -->
+            <div id="auto-sol-ui" class="hidden">
                 <p class="muted">Sends to a **random new address** every 1–5s. Range: 0.001–0.05 SOL</p>
                 <div class="row" style="margin-top:8px">
                     <button id="startSender" disabled>▶ Start Auto Sender</button>
@@ -174,24 +203,22 @@
                     <span class="pill err" id="senderErr">Err: 0</span>
                 </div>
             </div>
-
-            <!-- Manual Transfer UI -->
-            <div id="manual-transfer-ui">
-                <p class="muted">Send a specific amount of SOL to a specific address or a random one.</p>
-                <div class="checkbox-label">
-                    <input type="checkbox" id="useRandomAddress" style="width: auto;"/>
-                    <label for="useRandomAddress">Use a random address</label>
-                </div>
+            
+            <!-- Token Transfer Section -->
+            <div id="token-ui" class="hidden">
+                <p class="muted">Send existing SPL tokens to another wallet.</p>
+                <label style="margin-top:8px">Token Mint Address</label>
+                <input id="tokenMintAddress" placeholder="Enter token mint address..." value="2wFqA859fS99z7bQJ3XjYJtX8yB1E4P9Wd5K5qJ3Xj" />
                 <label style="margin-top:8px">Recipient Address</label>
-                <input id="recipientAddress" placeholder="Enter recipient address..." />
-                <label style="margin-top:8px">Amount (SOL)</label>
-                <input id="sendAmount" type="number" step="0.001" placeholder="0.1" />
+                <input id="recipientAddressToken" placeholder="Enter recipient address..." />
+                <label style="margin-top:8px">Amount (Tokens)</label>
+                <input id="sendAmountToken" type="number" step="1" placeholder="10" />
                 <div style="margin-top:8px">
-                    <button id="sendManualBtn" disabled>Send SOL</button>
+                    <button id="sendTokenBtn" disabled>Transfer Tokens</button>
                 </div>
             </div>
 
-            <pre id="logSender"></pre>
+            <pre id="logWallet"></pre>
         </section>
     </div>
     
@@ -215,14 +242,16 @@
         let senderStats = { sent: 0, ok: 0, err: 0 };
 
         window.onload = function() {
-            // Reset faucet counters on page load
+            // Reset counters on page load
             faucetStats = { total: 0, ok: 0, err: 0 };
             claimsPerWallet = {};
+            senderStats = { sent: 0, ok: 0, err: 0 };
             updateFaucetStats();
+            updateSenderStats();
 
             setupEventListeners();
-            handleModeChange(); // Initialize the sender UI on page load
             handleFaucetModeChange(); // Initialize the faucet UI on page load
+            handleWalletModeChange(); // Initialize the wallet UI on page load
         };
 
         // Custom message box
@@ -241,10 +270,10 @@
         // Setup all event listeners
         function setupEventListeners() {
             // Tab functionality
-            const tabF = $("tab-faucet"), tabS = $("tab-sender");
-            const panelF = $("panel-faucet"), panelS = $("panel-sender");
-            tabF.onclick = () => { tabF.classList.add('active'); tabS.classList.remove('active'); panelF.classList.remove('hidden'); panelS.classList.add('hidden'); };
-            tabS.onclick = () => { tabS.classList.add('active'); tabF.classList.remove('active'); panelS.classList.remove('hidden'); panelF.classList.add('hidden'); };
+            const tabF = $("tab-faucet"), tabW = $("tab-wallet");
+            const panelF = $("panel-faucet"), panelW = $("panel-wallet");
+            tabF.onclick = () => { tabF.classList.add('active'); tabW.classList.remove('active'); panelF.classList.remove('hidden'); panelW.classList.add('hidden'); };
+            tabW.onclick = () => { tabW.classList.add('active'); tabF.classList.remove('active'); panelW.classList.remove('hidden'); panelF.classList.add('hidden'); };
         
             // Faucet Buttons
             const startFaucetBtn = $("startFaucet");
@@ -257,23 +286,25 @@
             clearFaucetBtn.onclick = () => { $("logFaucet").textContent = ''; };
             faucetModeSelect.onchange = handleFaucetModeChange;
         
-            // Sender Buttons
+            // Wallet Buttons
             const connectWalletBtn = $("connectWalletBtn");
+            const sendSolBtn = $("sendSolBtn");
+            const sendTokenBtn = $("sendTokenBtn");
+            const walletModeSelect = $("modeWallet");
             const startSenderBtn = $("startSender");
             const stopSenderBtn = $("stopSender");
-            const modeSelect = $("modeSender");
-            const sendManualBtn = $("sendManualBtn");
             
             connectWalletBtn.onclick = connectWallet;
-            startSenderBtn.onclick = () => { if (!senderRun) senderLoop(); };
+            sendSolBtn.onclick = sendManualSOL;
+            sendTokenBtn.onclick = sendToken;
+            walletModeSelect.onchange = handleWalletModeChange;
+            startSenderBtn.onclick = () => { if (!senderRun) autoSendLoop(); };
             stopSenderBtn.onclick = () => { senderRun = false; };
-            modeSelect.onchange = handleModeChange;
-            sendManualBtn.onclick = sendManualSOL;
 
-            // Manual Transfer Checkbox
+            // Manual SOL Transfer Checkbox
             const useRandomAddressCheckbox = $('useRandomAddress');
             useRandomAddressCheckbox.onchange = () => {
-                const recipientAddressInput = $('recipientAddress');
+                const recipientAddressInput = $('recipientAddressSol');
                 if (useRandomAddressCheckbox.checked) {
                     recipientAddressInput.disabled = true;
                     recipientAddressInput.value = '';
@@ -287,29 +318,11 @@
             // Wallet disconnect listener
             if ("solana" in window && window.solana) {
                 window.solana.on('disconnect', () => {
-                    sLog("Wallet disconnected.");
+                    walletLog("Wallet disconnected.");
                     senderRun = false;
                     walletProvider = null;
                     updateConnectionStatus(false);
                 });
-            }
-        }
-
-        // Handles the UI change between auto and manual sender modes
-        function handleModeChange() {
-            const mode = $("modeSender").value;
-            if (mode === 'auto') {
-                $("auto-transfer-ui").classList.remove('hidden');
-                $("manual-transfer-ui").classList.add('hidden');
-                $("startSender").disabled = !walletProvider;
-                $("stopSender").disabled = !senderRun;
-                $("sendManualBtn").disabled = true;
-            } else {
-                $("auto-transfer-ui").classList.add('hidden');
-                $("manual-transfer-ui").classList.remove('hidden');
-                $("startSender").disabled = true;
-                $("stopSender").disabled = true;
-                $("sendManualBtn").disabled = !walletProvider;
             }
         }
 
@@ -321,6 +334,45 @@
                 limitContainer.classList.add('hidden');
             } else {
                 limitContainer.classList.remove('hidden');
+            }
+        }
+
+        // Handles the UI change for different wallet operation modes
+        function handleWalletModeChange() {
+            const mode = $("modeWallet").value;
+            $('manual-sol-ui').classList.add('hidden');
+            $('auto-sol-ui').classList.add('hidden');
+            $('token-ui').classList.add('hidden');
+
+            // Reset buttons
+            $('sendSolBtn').disabled = true;
+            $('sendTokenBtn').disabled = true;
+            $('startSender').disabled = true;
+            $('stopSender').disabled = true;
+
+            switch (mode) {
+                case 'manual-sol':
+                    $('manual-sol-ui').classList.remove('hidden');
+                    if (walletProvider) {
+                        $('sendSolBtn').disabled = false;
+                    }
+                    break;
+                case 'auto-sol':
+                    $('auto-sol-ui').classList.remove('hidden');
+                    if (walletProvider) {
+                        $('startSender').disabled = false;
+                    }
+                    if (senderRun) {
+                        $('startSender').disabled = true;
+                        $('stopSender').disabled = false;
+                    }
+                    break;
+                case 'token':
+                    $('token-ui').classList.remove('hidden');
+                    if (walletProvider) {
+                        $('sendTokenBtn').disabled = false;
+                    }
+                    break;
             }
         }
 
@@ -442,20 +494,20 @@
             toggleFaucetInputs(false);
         }
         
-        // ===== SOL Sender Logic =====
-        function sLog(msg) {
+        // ===== Wallet & Token Operations Logic =====
+        function walletLog(msg) {
             const ts = new Date().toLocaleTimeString();
-            const logElement = $("logSender");
+            const logElement = $("logWallet");
             logElement.textContent += `[${ts}] ${msg}\n`;
             logElement.scrollTop = logElement.scrollHeight;
         }
-        
+
         function updateSenderStats() {
             $("senderSent").textContent = `Sent: ${senderStats.sent}`;
             $("senderOk").textContent = `OK: ${senderStats.ok}`;
             $("senderErr").textContent = `Err: ${senderStats.err}`;
         }
-
+        
         function updateConnectionStatus(isConnected, publicKey = null) {
             const statusEl = $('connectionStatus');
             const addressEl = $('connectedAddress');
@@ -463,25 +515,17 @@
                 statusEl.textContent = 'Connected';
                 statusEl.classList.add('connected');
                 addressEl.value = publicKey.toBase58();
-                handleModeChange();
+                handleWalletModeChange();
             } else {
                 statusEl.textContent = 'Not Connected';
                 statusEl.classList.remove('connected');
                 addressEl.value = '';
-                $("startSender").disabled = true;
-                $("stopSender").disabled = true;
-                $("sendManualBtn").disabled = true;
+                $('sendSolBtn').disabled = true;
+                $('sendTokenBtn').disabled = true;
+                $('startSender').disabled = true;
+                $('stopSender').disabled = true;
                 $('solBalancePill').textContent = 'SOL: 0.000';
             }
-        }
-
-        function toggleSenderInputs(disabled) {
-            $("rpcSender").disabled = disabled;
-            $("modeSender").disabled = disabled;
-            $("connectWalletBtn").disabled = disabled;
-            $("recipientAddress").disabled = disabled;
-            $("sendAmount").disabled = disabled;
-            $("sendManualBtn").disabled = disabled;
         }
 
         async function connectWallet() {
@@ -491,14 +535,16 @@
                     const response = await solana.connect();
                     walletProvider = solana;
                     updateConnectionStatus(true, response.publicKey);
-                    sLog(`Connected to wallet: ${response.publicKey.toBase58()}`);
+                    walletLog(`Connected to wallet: ${response.publicKey.toBase58()}`);
+                    const connection = new solanaWeb3.Connection($("rpcWallet").value.trim(), { commitment: 'confirmed' });
+                    await fetchBalances(connection, response.publicKey);
                 } catch (e) {
                     showMessage(`Error connecting to wallet: ${e?.message || e}`);
-                    sLog(`❌ Error connecting to wallet: ${e?.message || e}`);
+                    walletLog(`❌ Error connecting to wallet: ${e?.message || e}`);
                 }
             } else {
                 showMessage("Solana wallet not found. Please install Phantom or Solflare.");
-                sLog("❌ Solana wallet not found. Please install Phantom or Solflare.");
+                walletLog("❌ Solana wallet not found. Please install Phantom or Solflare.");
             }
         }
         
@@ -508,10 +554,82 @@
                 const solLamports = await connection.getBalance(publicKey);
                 $('solBalancePill').textContent = `SOL: ${(solLamports / solanaWeb3.LAMPORTS_PER_SOL).toFixed(4)}`;
             } catch (e) {
-                sLog(`❌ Error fetching balance: ${e?.message || e}`);
+                walletLog(`❌ Error fetching SOL balance: ${e?.message || e}`);
             }
         }
-        
+
+        // Manual SOL transfer function
+        async function sendManualSOL() {
+            const useRandomAddressCheckbox = $('useRandomAddress');
+            const recipientStr = $('recipientAddressSol').value.trim();
+            const amountStr = $('sendAmountSol').value.trim();
+            
+            if (!walletProvider || !walletProvider.publicKey) {
+                showMessage('Please connect your wallet first.');
+                return;
+            }
+
+            if (!useRandomAddressCheckbox.checked && !recipientStr) {
+                showMessage('Please enter a recipient address or check the random address box.');
+                return;
+            }
+            if (!amountStr) {
+                showMessage('Please enter an amount.');
+                return;
+            }
+
+            try {
+                const connection = new solanaWeb3.Connection($("rpcWallet").value.trim(), { commitment: 'confirmed' });
+                const amount = parseFloat(amountStr);
+                if (isNaN(amount) || amount <= 0) {
+                    showMessage('Please enter a valid amount.');
+                    return;
+                }
+                const lamports = Math.floor(amount * solanaWeb3.LAMPORTS_PER_SOL);
+                
+                let recipient;
+                if (useRandomAddressCheckbox.checked) {
+                    recipient = solanaWeb3.Keypair.generate().publicKey;
+                    walletLog(`Sending ${amount.toFixed(6)} SOL to a newly generated random address...`);
+                } else {
+                    recipient = new solanaWeb3.PublicKey(recipientStr);
+                    walletLog(`Sending ${amount.toFixed(6)} SOL to ${recipientStr}...`);
+                }
+
+                const transaction = new solanaWeb3.Transaction().add(
+                    solanaWeb3.SystemProgram.transfer({
+                        fromPubkey: walletProvider.publicKey,
+                        toPubkey: recipient,
+                        lamports: lamports
+                    })
+                );
+
+                transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+                transaction.feePayer = walletProvider.publicKey;
+
+                let signature;
+                if (walletProvider.signAndSendTransaction) {
+                    ({ signature } = await walletProvider.signAndSendTransaction(transaction));
+                } else {
+                    const signedTransaction = await walletProvider.signTransaction(transaction);
+                    signature = await connection.sendRawTransaction(signedTransaction.serialize());
+                }
+
+                walletLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()}`);
+                
+                await connection.confirmTransaction({
+                    signature: signature,
+                    commitment: 'confirmed',
+                });
+                walletLog(`✅ SOL transaction confirmed. TX: ${signature}`);
+                
+                await fetchBalances(connection, walletProvider.publicKey);
+            } catch (e) {
+                walletLog(`❌ Manual SOL send error: ${e?.message || e}`);
+                showMessage(`Error: ${e?.message || e}`);
+            }
+        }
+
         // Auto SOL transfer function
         async function sendRandomSOL(connection, wallet) {
             const recipient = solanaWeb3.Keypair.generate().publicKey;
@@ -537,103 +655,33 @@
                 signature = await connection.sendRawTransaction(signedTransaction.serialize());
             }
 
-            sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()}`);
+            walletLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()}`);
             
             await connection.confirmTransaction({
                 signature: signature,
                 commitment: 'confirmed',
             });
-            sLog(`✅ SOL transaction confirmed. TX: ${signature}`);
+            walletLog(`✅ SOL transaction confirmed. TX: ${signature}`);
         }
-        
-        // Manual SOL transfer function
-        async function sendManualSOL() {
-            const useRandomAddressCheckbox = $('useRandomAddress');
-            const recipientStr = $('recipientAddress').value.trim();
-            const amountStr = $('sendAmount').value.trim();
-            
-            if (!walletProvider || !walletProvider.publicKey) {
-                showMessage('Please connect your wallet first.');
-                return;
-            }
-            
-            if (!useRandomAddressCheckbox.checked && !recipientStr) {
-                showMessage('Please enter a recipient address or check the random address box.');
-                return;
-            }
 
-            if (!amountStr) {
-                showMessage('Please enter an amount.');
-                return;
-            }
-
-            try {
-                const connection = new solanaWeb3.Connection($("rpcSender").value.trim(), { commitment: 'confirmed' });
-                const amount = parseFloat(amountStr);
-                if (isNaN(amount) || amount <= 0) {
-                    showMessage('Please enter a valid amount.');
-                    return;
-                }
-                const lamports = Math.floor(amount * solanaWeb3.LAMPORTS_PER_SOL);
-                
-                let recipient;
-                if (useRandomAddressCheckbox.checked) {
-                    recipient = solanaWeb3.Keypair.generate().publicKey;
-                    sLog(`Sending ${amount.toFixed(6)} SOL to a newly generated random address...`);
-                } else {
-                    recipient = new solanaWeb3.PublicKey(recipientStr);
-                    sLog(`Sending ${amount.toFixed(6)} SOL to ${recipientStr}...`);
-                }
-                
-                const transaction = new solanaWeb3.Transaction().add(
-                    solanaWeb3.SystemProgram.transfer({
-                        fromPubkey: walletProvider.publicKey,
-                        toPubkey: recipient,
-                        lamports: lamports
-                    })
-                );
-
-                transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
-                transaction.feePayer = walletProvider.publicKey;
-
-                let signature;
-                if (walletProvider.signAndSendTransaction) {
-                    ({ signature } = await walletProvider.signAndSendTransaction(transaction));
-                } else {
-                    const signedTransaction = await walletProvider.signTransaction(transaction);
-                    signature = await connection.sendRawTransaction(signedTransaction.serialize());
-                }
-
-                sLog(`📤 Sent ${amount.toFixed(6)} SOL → ${recipient.toBase58()}`);
-                
-                await connection.confirmTransaction({
-                    signature: signature,
-                    commitment: 'confirmed',
-                });
-                sLog(`✅ SOL transaction confirmed. TX: ${signature}`);
-                
-                await fetchBalances(connection, walletProvider.publicKey);
-            } catch (e) {
-                sLog(`❌ Manual send error: ${e?.message || e}`);
-                showMessage(`Error: ${e?.message || e}`);
-            }
-        }
-        
         // Auto sender loop
-        async function senderLoop() {
-            const rpc = $("rpcSender").value.trim();
+        async function autoSendLoop() {
+            const rpc = $("rpcWallet").value.trim();
             
             if (!walletProvider || !walletProvider.publicKey) {
                 showMessage('Please connect your wallet first.');
                 return;
             }
+            
+            senderStats = { sent: 0, ok: 0, err: 0 };
+            updateSenderStats();
 
             const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
             senderRun = true;
             $("startSender").disabled = true;
             $("stopSender").disabled = false;
             
-            sLog(`Connected wallet: ${walletProvider.publicKey.toBase58()}`);
+            walletLog(`Connected wallet: ${walletProvider.publicKey.toBase58()}`);
 
             while (senderRun) {
                 await fetchBalances(connection, walletProvider.publicKey);
@@ -641,7 +689,7 @@
                 try {
                     const solBalanceLamports = await connection.getBalance(walletProvider.publicKey);
                     if (solBalanceLamports < 0.001 * solanaWeb3.LAMPORTS_PER_SOL) {
-                        sLog('⚠️ Insufficient SOL balance to pay for fees. Stopping sender.');
+                        walletLog('⚠️ Insufficient SOL balance to pay for fees. Stopping sender.');
                         senderRun = false;
                         break;
                     }
@@ -656,18 +704,108 @@
                 } catch (e) {
                     senderStats.err++;
                     updateSenderStats();
-                    sLog(`❌ Auto send error: ${e?.message || e}`);
+                    walletLog(`❌ Auto send error: ${e?.message || e}`);
                     console.error(e);
                 }
                 
                 const delay = Math.floor(rand(1000, 5000));
-                sLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
+                walletLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
                 if (senderRun) await sleep(delay);
             }
             
-            sLog('🛑 Auto sender loop stopped.');
+            walletLog('🛑 Auto sender loop stopped.');
             $("startSender").disabled = false;
             $("stopSender").disabled = true;
+        }
+
+        // Token transfer function
+        async function sendToken() {
+            const tokenMintStr = $('tokenMintAddress').value.trim();
+            const recipientStr = $('recipientAddressToken').value.trim();
+            const amountStr = $('sendAmountToken').value.trim();
+            
+            if (!walletProvider || !walletProvider.publicKey) {
+                showMessage('Please connect your wallet first.');
+                return;
+            }
+            if (!tokenMintStr || !recipientStr || !amountStr) {
+                showMessage('Please fill in all token transfer fields.');
+                return;
+            }
+
+            try {
+                const connection = new solanaWeb3.Connection($("rpcWallet").value.trim(), { commitment: 'confirmed' });
+                const tokenMint = new solanaWeb3.PublicKey(tokenMintStr);
+                const recipient = new solanaWeb3.PublicKey(recipientStr);
+                const amount = parseFloat(amountStr);
+                if (isNaN(amount) || amount <= 0) {
+                    showMessage('Please enter a valid token amount.');
+                    return;
+                }
+
+                walletLog(`Checking if recipient has an Associated Token Account...`);
+                
+                // Get the sender's token account
+                const senderTokenAccount = await splToken.getAssociatedTokenAddress(
+                    tokenMint,
+                    walletProvider.publicKey
+                );
+                
+                // Get the recipient's token account
+                const recipientTokenAccount = await splToken.getAssociatedTokenAddress(
+                    tokenMint,
+                    recipient
+                );
+                
+                // Create the transaction
+                const transaction = new solanaWeb3.Transaction();
+                
+                // Check if the recipient's token account exists, create if not
+                const recipientAccountInfo = await connection.getAccountInfo(recipientTokenAccount);
+                if (!recipientAccountInfo) {
+                    walletLog("Recipient's token account not found. Creating a new one...");
+                    transaction.add(
+                        splToken.createAssociatedTokenAccountInstruction(
+                            walletProvider.publicKey, // Payer
+                            recipientTokenAccount, // Associated Token Account
+                            recipient, // Owner
+                            tokenMint // Token Mint
+                        )
+                    );
+                }
+
+                // Add the transfer instruction
+                const mintInfo = await splToken.getMint(connection, tokenMint);
+                const tokenAmount = amount * (10 ** mintInfo.decimals); // Convert to base units
+                
+                transaction.add(
+                    splToken.createTransferInstruction(
+                        senderTokenAccount, // Source
+                        recipientTokenAccount, // Destination
+                        walletProvider.publicKey, // Owner
+                        tokenAmount // Amount
+                    )
+                );
+
+                transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+                transaction.feePayer = walletProvider.publicKey;
+
+                // Sign and send the transaction
+                walletLog(`📤 Sending ${amount} tokens to ${recipient.toBase58()}...`);
+
+                let signature;
+                if (walletProvider.signAndSendTransaction) {
+                    ({ signature } = await walletProvider.signAndSendTransaction(transaction));
+                } else {
+                    const signedTransaction = await walletProvider.signTransaction(transaction);
+                    signature = await connection.sendRawTransaction(signedTransaction.serialize());
+                }
+
+                walletLog(`✅ Token transaction confirmed. TX: ${signature}`);
+            } catch (e) {
+                walletLog(`❌ Token transfer error: ${e?.message || e}`);
+                showMessage(`Error: ${e?.message || e}`);
+            }
         }
     </script>
 </body>
