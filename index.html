@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Solayer Devnet — Faucet & Wallet</title>
+    <title>Solayer Devnet — Faucet</title>
     <!-- Solana Web3 library -->
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
-    <!-- SPL Token library -->
+    <!-- SPL Token library is no longer needed but kept for completeness in case it's used elsewhere, though the wallet functions are removed -->
     <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.js"></script>
     <!-- Buffer polyfill -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/buffer/6.0.3/buffer.min.js"></script>
@@ -19,9 +19,7 @@
         body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Arial}
         .wrap{max-width:1100px;margin:20px auto;padding:16px}
         h1{font-size:20px;margin:0 0 12px}
-        .tabs{display:flex;gap:8px;margin-bottom:12px}
-        .tab{padding:8px 12px;border:1px solid #25315a;background:#0e1633;border-radius:10px;cursor:pointer;transition:background-color 0.3s, border-color 0.3s;}
-        .tab.active{background:linear-gradient(135deg,#4169e1,#29c6ff);color:#001225;border:0}
+        /* No tabs needed, so removed the .tabs and .tab styles */
         .card{background:linear-gradient(180deg,#121a36,#0e152b);border:1px solid #1f2745;border-radius:14px;padding:14px}
         textarea,input,button,select{width:100%;border-radius:10px;border:1px solid #20305e;background:#0c1430;color:var(--text);padding:10px;outline:none;}
         button{cursor:pointer;font-weight:700;transition:background-color 0.3s, transform 0.1s;}
@@ -67,15 +65,6 @@
             margin: 0;
             font-weight: bold;
         }
-        .connection-pill {
-            margin-top: 12px;
-            text-align: center;
-            font-weight: bold;
-            color: var(--err);
-        }
-        .connection-pill.connected {
-            color: var(--ok);
-        }
         button:disabled, input:disabled, textarea:disabled, select:disabled {
             background-color: #1a1a1a;
             color: #666;
@@ -119,11 +108,7 @@
 </head>
 <body>
     <div class="wrap">
-        <h1>Solayer Devnet — Faucet & Wallet</h1>
-        <div class="tabs">
-            <button class="tab active" id="tab-faucet">Faucet Auto‑Claimer</button>
-            <button class="tab" id="tab-wallet">Wallet & Token Operations</button>
-        </div>
+        <h1>Solayer Devnet — Faucet Auto‑Claimer</h1>
         
         <!-- Faucet Tab -->
         <section id="panel-faucet" class="card">
@@ -167,85 +152,6 @@
             </div>
             <pre id="logFaucet"></pre>
         </section>
-        
-        <!-- Wallet & Token Operations Tab -->
-        <section id="panel-wallet" class="card hidden">
-            <div style="margin-bottom:8px">
-                <label>RPC URL</label>
-                <input id="rpcWallet" value="https://devnet-rpc.solayer.org" />
-            </div>
-            <div style="margin-top:8px">
-                <button id="connectWalletBtn">🔗 Connect Wallet</button>
-                <div id="connectionStatus" class="connection-pill">Not Connected</div>
-            </div>
-            <label style="margin-top:8px">Connected Address</label>
-            <input id="connectedAddress" readonly style="color: var(--ok);"/>
-            <div class="balance-pills">
-                <span class="pill" id="solBalancePill">SOL: 0.000</span>
-            </div>
-
-            <!-- Choose Mode -->
-            <hr class="section-separator">
-            <h3>Operations</h3>
-            <div style="margin-top:8px">
-                <label>Operation Mode</label>
-                <select id="modeWallet">
-                    <option value="manual-sol" selected>Manual SOL Transfer</option>
-                    <option value="auto-sol">Auto SOL Transfer</option>
-                    <option value="token">SPL Token Transfer</option>
-                </select>
-            </div>
-
-            <!-- Manual SOL Transfer Section -->
-            <div id="manual-sol-ui">
-                <p class="muted">Send a specific amount of SOL to a specific address or a random one.</p>
-                <div class="checkbox-label">
-                    <input type="checkbox" id="useRandomAddressSol" style="width: auto;"/>
-                    <label for="useRandomAddressSol">Use a random address</label>
-                </div>
-                <label style="margin-top:8px">Recipient Address</label>
-                <input id="recipientAddressSol" placeholder="Enter recipient address..." />
-                <label style="margin-top:8px">Amount (SOL)</label>
-                <input id="sendAmountSol" type="number" step="0.001" placeholder="0.1" />
-                <div style="margin-top:8px">
-                    <button id="sendSolBtn" disabled>Send SOL</button>
-                </div>
-            </div>
-
-            <!-- Auto SOL Transfer Section -->
-            <div id="auto-sol-ui" class="hidden">
-                <p class="muted">Sends to a **random new address** every 1–5s. Range: 0.001–0.05 SOL</p>
-                <div class="row" style="margin-top:8px">
-                    <button id="startSender" disabled>▶ Start Auto Sender</button>
-                    <button id="stopSender" disabled>⏹ Stop</button>
-                </div>
-                <div class="balance-pills">
-                    <span class="pill" id="senderSent">Sent: 0</span>
-                    <span class="pill ok" id="senderOk">OK: 0</span>
-                    <span class="pill err" id="senderErr">Err: 0</span>
-                </div>
-            </div>
-            
-            <!-- Token Transfer Section -->
-            <div id="token-ui" class="hidden">
-                <p class="muted">Send existing SPL tokens to another wallet.</p>
-                <div class="checkbox-label">
-                    <input type="checkbox" id="useRandomAddressToken" style="width: auto;"/>
-                    <label for="useRandomAddressToken">Use a random address</label>
-                </div>
-                <label style="margin-top:8px">Token Mint Address</label>
-                <input id="tokenMintAddress" placeholder="Enter token mint address..." value="2wFqA859fS99z7bQJ3XjYJtX8yB1E4P9Wd5K5qJ3Xj" />
-                <label style="margin-top:8px">Recipient Address</label>
-                <input id="recipientAddressToken" placeholder="Enter recipient address..." />
-                <label style="margin-top:8px">Amount (Tokens)</label>
-                <input id="sendAmountToken" type="number" step="1" placeholder="10" />
-                <div style="margin-top:8px">
-                    <button id="sendTokenBtn" disabled>Transfer Tokens</button>
-                </div>
-            </div>
-
-            <pre id="logWallet"></pre>
-        </section>
     </div>
     
     <!-- Custom Message Box -->
@@ -261,11 +167,8 @@
 
         // Global state variables
         let faucetRun = false;
-        let senderRun = false;
-        let walletProvider = null;
         let faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
         let claimsPerWallet = {};
-        let senderStats = { sent: 0, ok: 0, err: 0, retries: {} };
 
         // Helper function to create a clickable explorer link
         function createExplorerLink(signature) {
@@ -277,13 +180,10 @@
             // Reset counters on page load
             faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
             claimsPerWallet = {};
-            senderStats = { sent: 0, ok: 0, err: 0, retries: {} };
             updateFaucetStats();
-            updateSenderStats();
 
             setupEventListeners();
             handleFaucetModeChange(); // Initialize the faucet UI on page load
-            handleWalletModeChange(); // Initialize the wallet UI on page load
         };
 
         // Custom message box
@@ -301,193 +201,25 @@
         
         // Setup all event listeners
         function setupEventListeners() {
-            // Tab functionality
-            const tabF = $("tab-faucet"), tabW = $("tab-wallet");
-            const panelF = $("panel-faucet"), panelW = $("panel-wallet");
-            tabF.onclick = () => { tabF.classList.add('active'); tabW.classList.remove('active'); panelF.classList.remove('hidden'); panelW.classList.add('hidden'); };
-            tabW.onclick = () => { tabW.classList.add('active'); tabF.classList.remove('active'); panelW.classList.remove('hidden'); panelF.classList.add('hidden'); };
             // Faucet Buttons
             const startFaucetBtn = $("startFaucet");
             const stopFaucetBtn = $("stopFaucet");
             const clearFaucetBtn = $("clearFaucetLog");
             const faucetModeSelect = $("faucetMode");
+
             startFaucetBtn.onclick = () => { if (!faucetRun) faucetLoop(); };
-            stopFaucetBtn.onclick = () => { faucetRun = false; stopFaucetBtn.textContent = 'Stopping...'; stopFaucetBtn.disabled = true; };
+            stopFaucetBtn.onclick = () => { 
+                faucetRun = false; 
+                stopFaucetBtn.textContent = 'Stopping...';
+                stopFaucetBtn.disabled = true;
+            };
             clearFaucetBtn.onclick = () => { $("logFaucet").innerHTML = ''; };
             faucetModeSelect.onchange = handleFaucetModeChange;
-            // Wallet Buttons
-            const connectWalletBtn = $("connectWalletBtn");
-            const sendSolBtn = $("sendSolBtn");
-            const sendTokenBtn = $("sendTokenBtn");
-            const walletModeSelect = $("modeWallet");
-            const startSenderBtn = $("startSender");
-            const stopSenderBtn = $("stopSender");
-            connectWalletBtn.onclick = connectWallet;
-            sendSolBtn.onclick = sendManualSOL;
-            sendTokenBtn.onclick = sendToken;
-            walletModeSelect.onchange = handleWalletModeChange;
-            startSenderBtn.onclick = () => { if (!senderRun) autoSendLoop(); };
-            stopSenderBtn.onclick = () => { senderRun = false; stopSenderBtn.textContent = 'Stopping...'; stopSenderBtn.disabled = true; };
-            // Manual SOL Transfer Checkbox
-            const useRandomAddressSolCheckbox = $('useRandomAddressSol');
-            useRandomAddressSolCheckbox.onchange = () => {
-                const recipientAddressInput = $('recipientAddressSol');
-                if (useRandomAddressSolCheckbox.checked) {
-                    recipientAddressInput.disabled = true;
-                    recipientAddressInput.value = '';
-                    recipientAddressInput.placeholder = 'Random address will be generated...';
-                } else {
-                    recipientAddressInput.disabled = false;
-                    recipientAddressInput.placeholder = 'Enter recipient address...';
-                }
-            };
-            // SPL Token Transfer Checkbox
-            const useRandomAddressTokenCheckbox = $('useRandomAddressToken');
-            useRandomAddressTokenCheckbox.onchange = () => {
-                const recipientAddressInput = $('recipientAddressToken');
-                if (useRandomAddressTokenCheckbox.checked) {
-                    recipientAddressInput.disabled = true;
-                    recipientAddressInput.value = '';
-                    recipientAddressInput.placeholder = 'Random address will be generated...';
-                } else {
-                    recipientAddressInput.disabled = false;
-                    recipientAddressInput.placeholder = 'Enter recipient address...';
-                }
-            };
-            // Wallet disconnect listener
-            if ("solana" in window && window.solana) {
-                window.solana.on('disconnect', () => {
-                    walletLog("Wallet disconnected.");
-                    senderRun = false;
-                    walletProvider = null;
-                    updateConnectionStatus();
-                    checkWalletButtons();
-                    fetchBalances();
-                });
-            }
         }
 
-        function updateFaucetStats() {
-            $('faucetTotal').textContent = `Total: ${faucetStats.total}`;
-            $('faucetOk').textContent = `Success: ${faucetStats.ok}`;
-            $('faucetErr').textContent = `Errors: ${faucetStats.err}`;
-        }
-        function updateSenderStats() {
-            $('senderSent').textContent = `Sent: ${senderStats.sent}`;
-            $('senderOk').textContent = `OK: ${senderStats.ok}`;
-            $('senderErr').textContent = `Err: ${senderStats.err}`;
-        }
-        function updateConnectionStatus() {
-            const statusPill = $('connectionStatus');
-            if (walletProvider) {
-                statusPill.textContent = "Connected";
-                statusPill.classList.remove('err');
-                statusPill.classList.add('connected');
-                $('connectedAddress').value = walletProvider.publicKey.toBase58();
-            } else {
-                statusPill.textContent = "Not Connected";
-                statusPill.classList.remove('connected');
-                statusPill.classList.add('err');
-                $('connectedAddress').value = "";
-            }
-        }
-        function checkWalletButtons() {
-            const connected = walletProvider !== null;
-            $('sendSolBtn').disabled = !connected || ($('useRandomAddressSol').checked && walletProvider === null);
-            $('sendTokenBtn').disabled = !connected;
-            $('startSender').disabled = !connected;
-        }
-
-        // Faucet functions
-        function faucetLog(msg) {
-            const logElement = $('logFaucet');
-            logElement.innerHTML += `${msg}\n`;
-            logElement.scrollTop = logElement.scrollHeight;
-        }
-
-        async function faucetLoop() {
-            faucetRun = true;
-            $('startFaucet').disabled = true;
-            $('stopFaucet').disabled = false;
-            faucetLog("Starting faucet loop...");
-
-            const rpc = $('rpcFaucet').value;
-            const connection = new solanaWeb3.Connection(rpc, 'confirmed');
-
-            const addrsText = $('addrsFaucet').value;
-            const addrs = addrsText.split('\n').map(a => a.trim()).filter(a => a.length > 0);
-
-            if (addrs.length === 0) {
-                faucetLog("No addresses provided. Stopping.");
-                faucetRun = false;
-                $('startFaucet').disabled = false;
-                $('stopFaucet').disabled = true;
-                return;
-            }
-
-            while (faucetRun) {
-                for (const addr of addrs) {
-                    if (!faucetRun) break;
-
-                    const mode = $('faucetMode').value;
-                    const limit = parseInt($('faucetClaimLimit').value);
-                    const isTotalLimit = mode === 'total' && faucetStats.total >= limit;
-                    const isPerWalletLimit = mode === 'per-wallet' && (claimsPerWallet[addr] || 0) >= limit;
-
-                    if (isTotalLimit || isPerWalletLimit) {
-                        faucetLog(`Limit reached for ${mode} claims. Skipping address ${addr.substring(0, 8)}...`);
-                        continue;
-                    }
-
-                    try {
-                        const amount = parseFloat($('amtFaucet').value);
-                        if (isNaN(amount) || amount <= 0) {
-                            faucetLog("Invalid amount. Stopping.");
-                            faucetRun = false;
-                            break;
-                        }
-
-                        const pubkey = new solanaWeb3.PublicKey(addr);
-                        const airdropSig = await connection.requestAirdrop(pubkey, amount * solanaWeb3.LAMPORTS_PER_SOL);
-                        
-                        faucetLog(`Attempting airdrop for ${addr.substring(0, 8)}... TX: ${createExplorerLink(airdropSig)}`);
-
-                        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-                        const confirmationStrategy = {
-                            signature: airdropSig,
-                            blockhash,
-                            lastValidBlockHeight,
-                            abortSignal: AbortSignal.timeout(30000)
-                        };
-
-                        const confirmation = await connection.confirmTransaction(confirmationStrategy);
-
-                        if (confirmation.value.err) {
-                            faucetLog(`❌ Airdrop failed: ${JSON.stringify(confirmation.value.err)}`);
-                            throw new Error(`Airdrop failed`);
-                        }
-
-                        faucetLog(`✅ Airdrop confirmed! ${amount} SOL sent to ${addr.substring(0, 8)}...`);
-                        faucetStats.ok++;
-                        claimsPerWallet[addr] = (claimsPerWallet[addr] || 0) + 1;
-                    } catch (e) {
-                        faucetLog(`❌ Airdrop error: ${e?.message || e}`);
-                        faucetStats.err++;
-                    } finally {
-                        faucetStats.total++;
-                        updateFaucetStats();
-                    }
-                    await sleep(rand(1000, 5000));
-                }
-            }
-            faucetLog("Faucet loop stopped.");
-            $('startFaucet').disabled = false;
-            $('stopFaucet').disabled = true;
-            $('stopFaucet').textContent = '⏹ Stop';
-        }
-
+        // Handles the UI change for different faucet claim modes
         function handleFaucetModeChange() {
-            const mode = $('faucetMode').value;
+            const mode = $("faucetMode").value;
             const limitContainer = $('faucet-limit-container');
             if (mode === 'indefinitely') {
                 limitContainer.classList.add('hidden');
@@ -496,417 +228,149 @@
             }
         }
 
-        // Wallet functions
-        function walletLog(msg) {
-            const logElement = $('logWallet');
-            logElement.innerHTML += `${msg}\n`;
+        // ===== Faucet Auto‑Claimer Logic =====
+        function fLog(msg) {
+            const ts = new Date().toLocaleTimeString();
+            const logElement = $("logFaucet");
+            logElement.innerHTML += `[${ts}] ${msg}<br>`;
             logElement.scrollTop = logElement.scrollHeight;
         }
-
-        async function fetchBalances() {
-            if (!walletProvider || !walletProvider.publicKey) {
-                $('solBalancePill').textContent = 'SOL: 0.000';
-                return;
-            }
-
-            try {
-                const connection = new solanaWeb3.Connection($('rpcWallet').value, 'confirmed');
-                const solBalance = await connection.getBalance(walletProvider.publicKey);
-                $('solBalancePill').textContent = `SOL: ${(solBalance / solanaWeb3.LAMPORTS_PER_SOL).toFixed(3)}`;
-
-            } catch (e) {
-                walletLog(`❌ Balance fetch error: ${e?.message || e}`);
-                $('solBalancePill').textContent = 'SOL: N/A';
-            }
-        }
         
-        async function connectWallet() {
-            try {
-                if ("solana" in window) {
-                    const solana = window.solana;
-                    if (solana.isPhantom) {
-                        const resp = await solana.connect();
-                        walletProvider = solana;
-                        walletLog(`Connected to Phantom wallet. Public Key: ${resp.publicKey.toBase58()}`);
-                        updateConnectionStatus();
-                        checkWalletButtons();
-                        await fetchBalances();
-                    } else {
-                        showMessage("Phantom wallet not found!");
-                    }
-                } else {
-                    showMessage("Solana object not found! Please install a Solana wallet like Phantom.");
-                }
-            } catch (e) {
-                walletLog(`❌ Connection error: ${e?.message || e}`);
-            }
+        function updateFaucetStats() {
+            $("faucetTotal").textContent = `Total: ${faucetStats.total}`;
+            $("faucetOk").textContent = `Success: ${faucetStats.ok}`;
+            $("faucetErr").textContent = `Errors: ${faucetStats.err}`;
         }
 
-        async function waitForConfirmation(connection, signature, maxAttempts = 30) {
-            for (let i = 0; i < maxAttempts; i++) {
-                try {
-                    const status = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
-                    const result = status.value;
-                    
-                    if (result && result.confirmationStatus === 'finalized') {
-                        walletLog(`✅ Transaction is finalized.`);
-                        return true;
-                    }
-                    if (result && result.confirmationStatus === 'confirmed') {
-                        walletLog(`✅ Transaction is confirmed.`);
-                        return true;
-                    }
-                    if (result && result.err) {
-                        throw new Error(`Transaction failed with error: ${JSON.stringify(result.err)}`);
-                    }
-                } catch (e) {
-                    // Log the error but don't re-throw unless it's a critical error
-                    console.error(`Status check failed on attempt ${i + 1}:`, e);
-                }
-                
-                // Add a delay before checking again
-                await sleep(1000); 
-            }
-            
-            throw new Error('Timeout: Transaction not confirmed after 30 seconds.');
+        function toggleFaucetInputs(disabled) {
+            $("rpcFaucet").disabled = disabled;
+            $("amtFaucet").disabled = disabled;
+            $("addrsFaucet").disabled = disabled;
+            $("faucetMode").disabled = disabled;
+            $("faucetClaimLimit").disabled = disabled;
+            $("startFaucet").disabled = disabled;
+            $("stopFaucet").disabled = !disabled;
         }
 
-        async function sendManualSOL() {
-            try {
-                const rpc = $('rpcWallet').value;
-                const connection = new solanaWeb3.Connection(rpc, {
-                    commitment: 'confirmed',
-                    wsEndpoint: undefined,
-                    confirmTransactionInitialTimeout: 30000
-                });
+        async function faucetLoop() {
+            // Reset counters at the start of a new loop
+            faucetStats = { total: 0, ok: 0, err: 0, retries: {} };
+            claimsPerWallet = {};
+            updateFaucetStats();
 
-                const useRandom = $('useRandomAddressSol').checked;
-                let recipient;
-                if (useRandom) {
-                    recipient = solanaWeb3.Keypair.generate().publicKey;
-                } else {
-                    recipient = new solanaWeb3.PublicKey($('recipientAddressSol').value);
-                }
-
-                const amount = parseFloat($('sendAmountSol').value);
-                if (isNaN(amount) || amount <= 0) {
-                    showMessage("Invalid amount.");
-                    return;
-                }
-                const lamports = Math.floor(amount * solanaWeb3.LAMPORTS_PER_SOL);
-
-                const balance = await connection.getBalance(walletProvider.publicKey);
-                if (balance < lamports) {
-                    showMessage("Insufficient funds.");
-                    return;
-                }
-
-                const priorityFeeInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({
-                    microLamports: 150000, 
-                });
-
-                const transaction = new solanaWeb3.Transaction()
-                    .add(priorityFeeInstruction)
-                    .add(
-                        solanaWeb3.SystemProgram.transfer({
-                            fromPubkey: walletProvider.publicKey,
-                            toPubkey: recipient,
-                            lamports: lamports
-                        })
-                    );
-
-                const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-                transaction.recentBlockhash = blockhash;
-                transaction.lastValidBlockHeight = lastValidBlockHeight;
-                transaction.feePayer = walletProvider.publicKey;
-
-                let signature;
-                if (walletProvider.signAndSendTransaction) {
-                    const res = await walletProvider.signAndSendTransaction(transaction, {
-                        skipPreflight: false,
-                        preflightCommitment: "processed",
-                        maxRetries: 3
-                    });
-                    signature = res.signature || res;
-                } else {
-                    const signedTx = await walletProvider.signTransaction(transaction);
-                    signature = await connection.sendRawTransaction(signedTx.serialize(), {
-                        skipPreflight: false,
-                        maxRetries: 3
-                    });
-                }
-                
-                walletLog(`📤 Attempting to send ${amount.toFixed(6)} SOL to ${recipient.toBase58()}. TX: ${createExplorerLink(signature)}`);
-                await waitForConfirmation(connection, signature);
-                
-                walletLog(`✅ Transaction confirmed! ${amount.toFixed(6)} SOL sent successfully to ${recipient.toBase58()}`);
-                await fetchBalances();
-
-            } catch (e) {
-                const errorMessage = e?.message || e;
-                if (errorMessage.includes('block height exceeded') || errorMessage.includes('expired')) {
-                    walletLog(`❌ Transaction expired before confirmation: ${createExplorerLink(signature)}`);
-                } else if (errorMessage.includes('insufficient funds')) {
-                    walletLog(`❌ Insufficient funds for transaction + fees`);
-                } else if (errorMessage.includes('timeout')) {
-                    walletLog(`❌ Transaction confirmation timeout: ${createExplorerLink(signature)}`);
-                } else {
-                    walletLog(`❌ Send error: ${errorMessage}`);
-                }
-                console.error("TX Error Details:", e);
-                showMessage(`Error: ${e?.message || e}`);
-            }
-        }
-
-        async function autoSendLoop() {
-            senderRun = true;
-            $('startSender').disabled = true;
-            $('stopSender').disabled = false;
-            walletLog("Starting auto sender loop...");
-
-            const maxRetryTime = 120000; // 2 minutes max
-            const retryStartTime = Date.now();
-            let retryCount = 0;
-
-            while (senderRun && (Date.now() - retryStartTime) < maxRetryTime) {
-                try {
-                    const sent = await sendRandomSOL();
-                    if (sent) {
-                        senderStats.sent++;
-                        senderStats.ok++;
-                    }
-                    updateSenderStats();
-                } catch (e) {
-                    const delay = Math.min(Math.pow(2, retryCount) * 1000, 10000); // Cap delay at 10s
-                    walletLog(`❌ Auto send error on attempt ${retryCount + 1}: ${e?.message || e}`);
-                    walletLog(`Retrying in ${delay / 1000}s...`);
-                    await sleep(delay);
-                    retryCount++;
-                    senderStats.err++;
-                    updateSenderStats();
-                }
-
-                if (senderRun) {
-                    await sleep(rand(1000, 5000));
-                }
-            }
-            walletLog("Auto sender loop stopped.");
-            $('startSender').disabled = false;
-            $('stopSender').disabled = true;
-            $('stopSender').textContent = '⏹ Stop';
-        }
-
-        async function sendRandomSOL() {
-            if (!walletProvider || !walletProvider.publicKey) {
-                walletLog("No wallet connected. Aborting auto-send.");
-                senderRun = false;
-                throw new Error("No wallet connected.");
-            }
-
-            const rpc = $('rpcWallet').value;
-            const connection = new solanaWeb3.Connection(rpc, {
-                commitment: 'confirmed',
-                wsEndpoint: undefined,
-                confirmTransactionInitialTimeout: 30000
-            });
-            
-            const recipient = solanaWeb3.Keypair.generate().publicKey;
-            const amount = rand(0.001, 0.05);
-            const lamports = Math.floor(amount * solanaWeb3.LAMPORTS_PER_SOL);
-
-            try {
-                const priorityFeeInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({
-                    microLamports: 150000, 
-                });
-                
-                const transaction = new solanaWeb3.Transaction()
-                    .add(priorityFeeInstruction)
-                    .add(
-                        solanaWeb3.SystemProgram.transfer({
-                            fromPubkey: walletProvider.publicKey,
-                            toPubkey: recipient,
-                            lamports: lamports
-                        })
-                    );
-
-                const balance = await connection.getBalance(walletProvider.publicKey);
-                const estimatedFee = 10000; 
-                if (balance < lamports + estimatedFee) {
-                    throw new Error(`Insufficient funds: ${balance / solanaWeb3.LAMPORTS_PER_SOL} SOL available, need ${(lamports + estimatedFee) / solanaWeb3.LAMPORTS_PER_SOL} SOL`);
-                }
-
-                const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-                transaction.recentBlockhash = blockhash;
-                transaction.lastValidBlockHeight = lastValidBlockHeight;
-                transaction.feePayer = walletProvider.publicKey;
-
-                let signature;
-                if (walletProvider.signAndSendTransaction) {
-                    const res = await walletProvider.signAndSendTransaction(transaction, {
-                        skipPreflight: false,
-                        preflightCommitment: "processed",
-                        maxRetries: 3
-                    });
-                    signature = res.signature || res;
-                } else {
-                    const signedTx = await walletProvider.signTransaction(transaction);
-                    signature = await connection.sendRawTransaction(signedTx.serialize(), {
-                        skipPreflight: false,
-                        maxRetries: 3
-                    });
-                }
-                
-                walletLog(`📤 Attempting to send ${amount.toFixed(6)} SOL to ${recipient.toBase58()}. TX: ${createExplorerLink(signature)}`);
-                await waitForConfirmation(connection, signature);
-
-                walletLog(`✅ Transaction confirmed! ${amount.toFixed(6)} SOL sent successfully.`);
-                await fetchBalances();
-                return true;
-
-            } catch (e) {
-                const errorMessage = e?.message || e;
-                if (errorMessage.includes('block height exceeded') || errorMessage.includes('expired')) {
-                    walletLog(`❌ Transaction expired before confirmation: ${createExplorerLink(signature)}`);
-                } else if (errorMessage.includes('insufficient funds')) {
-                    walletLog(`❌ Insufficient funds for transaction + fees`);
-                } else if (errorMessage.includes('timeout')) {
-                    walletLog(`❌ Transaction confirmation timeout: ${createExplorerLink(signature)}`);
-                } else {
-                    walletLog(`❌ Send error: ${errorMessage}`);
-                }
-                console.error("TX Error Details:", e);
-                throw e; 
-            }
-        }
-
-        async function sendToken() {
-            if (!walletProvider || !walletProvider.publicKey) {
-                showMessage("Please connect your wallet first.");
+            const rpc = $("rpcFaucet").value.trim();
+            if (!rpc) {
+                showMessage('Please enter an RPC URL.');
                 return;
             }
-
-            try {
-                const rpc = $('rpcWallet').value;
-                const connection = new solanaWeb3.Connection(rpc, 'confirmed');
-                
-                const mintAddress = new solanaWeb3.PublicKey($('tokenMintAddress').value);
-                const amount = parseFloat($('sendAmountToken').value);
-                const useRandom = $('useRandomAddressToken').checked;
-                
-                let recipientAddress;
-                if (useRandom) {
-                    recipientAddress = solanaWeb3.Keypair.generate().publicKey;
-                } else {
-                    recipientAddress = new solanaWeb3.PublicKey($('recipientAddressToken').value);
-                }
-                
-                if (isNaN(amount) || amount <= 0) {
-                    showMessage("Invalid token amount.");
-                    return;
-                }
-
-                walletLog(`🔍 Fetching token account for mint: ${mintAddress.toBase58()}`);
-                const fromTokenAccount = await solanaWeb3.getAssociatedTokenAddress(mintAddress, walletProvider.publicKey);
-
-                walletLog(`🔍 Fetching recipient token account for: ${recipientAddress.toBase58()}`);
-                let toTokenAccount = await connection.getAccountInfo(await solanaWeb3.getAssociatedTokenAddress(mintAddress, recipientAddress));
-
-                let transaction = new solanaWeb3.Transaction();
-
-                if (!toTokenAccount) {
-                    walletLog("Recipient token account not found. Creating it...");
-                    const createIx = solanaWeb3.createAssociatedTokenAccountInstruction(
-                        walletProvider.publicKey,
-                        solanaWeb3.getAssociatedTokenAddressSync(mintAddress, recipientAddress),
-                        recipientAddress,
-                        mintAddress,
-                        solanaWeb3.TOKEN_PROGRAM_ID,
-                        solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID
-                    );
-                    transaction.add(createIx);
-                }
-
-                const priorityFeeInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({
-                    microLamports: 150000, 
-                });
-                transaction.add(priorityFeeInstruction);
-
-                const transferIx = solanaWeb3.createTransferCheckedInstruction(
-                    fromTokenAccount,
-                    mintAddress,
-                    solanaWeb3.getAssociatedTokenAddressSync(mintAddress, recipientAddress),
-                    walletProvider.publicKey,
-                    BigInt(amount * (10 ** 9)), // Use BigInt for precision
-                    9, 
-                    [],
-                    solanaWeb3.TOKEN_PROGRAM_ID
-                );
-                transaction.add(transferIx);
-
-                const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-                transaction.recentBlockhash = blockhash;
-                transaction.lastValidBlockHeight = lastValidBlockHeight;
-                transaction.feePayer = walletProvider.publicKey;
-
-                walletLog(`📤 Sending ${amount} tokens to ${recipientAddress.toBase58()}...`);
-                let signature;
-
-                if (walletProvider.signAndSendTransaction) {
-                    const res = await walletProvider.signAndSendTransaction(transaction, {
-                        skipPreflight: false,
-                        preflightCommitment: "processed",
-                        maxRetries: 3
-                    });
-                    signature = res.signature || res;
-                } else {
-                    const signedTx = await walletProvider.signTransaction(transaction);
-                    signature = await connection.sendRawTransaction(signedTx.serialize(), {
-                        skipPreflight: false,
-                        maxRetries: 3
-                    });
-                }
-                
-                walletLog(`TX: ${createExplorerLink(signature)}`);
-                await waitForConfirmation(connection, signature);
-
-                walletLog(`✅ Token transfer confirmed! ${amount} tokens sent successfully.`);
-                
-            } catch (e) {
-                const errorMessage = e?.message || e;
-                if (errorMessage.includes('block height exceeded') || errorMessage.includes('expired')) {
-                    walletLog(`❌ Transaction expired before confirmation: ${createExplorerLink(signature)}`);
-                } else if (errorMessage.includes('insufficient funds')) {
-                    walletLog(`❌ Insufficient funds for transaction + fees`);
-                } else if (errorMessage.includes('timeout')) {
-                    walletLog(`❌ Transaction confirmation timeout: ${createExplorerLink(signature)}`);
-                } else {
-                    walletLog(`❌ Send error: ${errorMessage}`);
-                }
-                console.error("TX Error:", e);
-                showMessage(`Error: ${e?.message || e}`);
-            } finally {
-                await fetchBalances();
+            const amountSol = parseFloat($("amtFaucet").value || '0.1');
+            const lamports = Math.floor(amountSol * 1e9);
+            const addresses = $("addrsFaucet").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+            const faucetMode = $("faucetMode").value;
+            const claimLimit = parseInt($("faucetClaimLimit").value);
+            
+            if (!addresses.length) {
+                showMessage('Please enter at least one address for the Faucet.');
+                return;
             }
-        }
-
-        function handleWalletModeChange() {
-            const mode = $('modeWallet').value;
-            $('manual-sol-ui').classList.add('hidden');
-            $('auto-sol-ui').classList.add('hidden');
-            $('token-ui').classList.add('hidden');
-
-            switch (mode) {
-                case 'manual-sol':
-                    $('manual-sol-ui').classList.remove('hidden');
-                    break;
-                case 'auto-sol':
-                    $('auto-sol-ui').classList.remove('hidden');
-                    break;
-                case 'token':
-                    $('token-ui').classList.remove('hidden');
-                    break;
+            if ((faucetMode === 'total' || faucetMode === 'per-wallet') && (isNaN(claimLimit) || claimLimit <= 0)) {
+                showMessage('Please enter a valid number of claims.');
+                return;
             }
-            checkWalletButtons();
+            
+            faucetRun = true;
+            toggleFaucetInputs(true);
+            
+            fLog(`Connecting to RPC → ${rpc}`);
+            const connection = new solanaWeb3.Connection(rpc, { commitment: 'confirmed' });
+            
+            while (faucetRun) {
+                if (faucetMode === 'total' && faucetStats.ok >= claimLimit) {
+                    fLog(`✅ Total claim limit of ${claimLimit} reached. Stopping loop.`);
+                    faucetRun = false;
+                    break;
+                }
+                
+                // Pick a random address from the list for all modes
+                const randomIndex = Math.floor(Math.random() * addresses.length);
+                const addr = addresses[randomIndex];
+                
+                let pk;
+                try {
+                    pk = new solanaWeb3.PublicKey(addr);
+                } catch (e) {
+                    fLog(`❌ Skipping invalid address: ${addr}. Error: ${e.message}`);
+                    await sleep(1000); // Short delay to prevent hammering
+                    continue;
+                }
+                
+                // Initialize counter for this address if it doesn't exist
+                if (faucetMode === 'per-wallet' && !claimsPerWallet[addr]) {
+                    claimsPerWallet[addr] = 0;
+                }
+                
+                // Check if per-wallet claim limit is reached
+                if (faucetMode === 'per-wallet' && claimsPerWallet[addr] >= claimLimit) {
+                    // Find an address that hasn't reached its limit
+                    const availableAddrs = addresses.filter(a => claimsPerWallet[a] < claimLimit);
+                    if (availableAddrs.length === 0) {
+                        fLog('All wallets have reached their claim limit. Stopping loop.');
+                        faucetRun = false;
+                        break;
+                    }
+                    // Pick a random address from the remaining ones
+                    const nextAddr = availableAddrs[Math.floor(Math.random() * availableAddrs.length)];
+                    fLog(`Skipping ${addr}. Trying next address: ${nextAddr}`);
+                    await sleep(1000); // Short delay to prevent hammering
+                    continue;
+                }
+                
+                faucetStats.total++;
+                updateFaucetStats();
+                fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
+                
+                let airdropSuccess = false;
+                let retryCount = faucetStats.retries[addr] || 0;
+                while (retryCount < 5 && faucetRun) {
+                    try {
+                        fLog(`Attempt ${retryCount + 1}: Waiting for confirmation...`);
+                        const sig = await connection.requestAirdrop(pk, lamports);
+                        await connection.confirmTransaction({ signature: sig, commitment: 'confirmed' });
+                        fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
+                        airdropSuccess = true;
+                        break;
+                    } catch (e) {
+                        const delay = Math.pow(2, retryCount) * 1000;
+                        fLog(`❌ Error on attempt ${retryCount + 1}: ${e?.message || e}`);
+                        fLog(`Retrying in ${delay / 1000}s...`);
+                        await sleep(delay);
+                        retryCount++;
+                    }
+                }
+                
+                if (airdropSuccess) {
+                    faucetStats.ok++;
+                    faucetStats.retries[addr] = 0; // Reset retries on success
+                    if (faucetMode === 'per-wallet') {
+                         claimsPerWallet[addr]++;
+                    }
+                } else {
+                    faucetStats.err++;
+                    faucetStats.retries[addr] = (faucetStats.retries[addr] || 0) + 1; // Increment retries
+                    fLog(`❌ Failed to airdrop to ${addr} after multiple retries.`);
+                }
+                updateFaucetStats();
+                
+                const delay = Math.floor(rand(1000, 5000));
+                fLog(`⏳ Waiting for ${(delay / 1000).toFixed(2)}s`);
+                if (faucetRun) {
+                    await sleep(delay);
+                }
+            }
+            
+            fLog('🛑 Faucet loop stopped.');
+            toggleFaucetInputs(false);
+            $('stopFaucet').textContent = '⏹ Stop';
         }
     </script>
 </body>
