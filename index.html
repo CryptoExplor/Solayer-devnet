@@ -699,31 +699,45 @@
                     })
                 );
 
+                // Added explicit blockhash and lastValidBlockHeight
                 const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
                 transaction.recentBlockhash = blockhash;
                 transaction.lastValidBlockHeight = lastValidBlockHeight;
                 transaction.feePayer = walletProvider.publicKey;
                 
                 let signature;
+                let txid;
                 walletLog(`📤 Sending ${amount.toFixed(6)} SOL. Waiting for wallet approval...`);
 
                 try {
-                    // Try the preferred signAndSendTransaction method first
-                    const { signature: sig } = await walletProvider.signAndSendTransaction(transaction);
-                    signature = sig;
+                    // Always try signAndSendTransaction first
+                    if (walletProvider.signAndSendTransaction) {
+                        txid = await walletProvider.signAndSendTransaction(transaction, {
+                            skipPreflight: false,
+                            preflightCommitment: "confirmed"
+                        });
+                        signature = txid.signature || txid;
+                    } else {
+                         // Fallback to manual signing and sending
+                        const signedTransaction = await walletProvider.signTransaction(transaction);
+                        txid = await connection.sendRawTransaction(signedTransaction.serialize(), {
+                            skipPreflight: false
+                        });
+                        signature = txid;
+                    }
                 } catch (e) {
-                    // Fallback to manual signing and sending if the first method fails
-                    walletLog(`⚠️ signAndSendTransaction failed. Falling back to signTransaction...`);
-                    const signedTransaction = await walletProvider.signTransaction(transaction);
-                    signature = await connection.sendRawTransaction(signedTransaction.serialize());
+                    walletLog(`❌ Transaction signing/sending failed: ${e?.message || e}`);
+                    showMessage(`Error: ${e?.message || e}`);
+                    return;
                 }
 
                 walletLog(`Waiting for confirmation... TX: ${createExplorerLink(signature)}`);
                 
-                await connection.confirmTransaction({
-                    signature: signature,
-                    commitment: 'confirmed',
-                });
+                // Added explicit blockhash and lastValidBlockHeight to the confirmation
+                await connection.confirmTransaction(
+                    { signature: signature, blockhash, lastValidBlockHeight },
+                    'confirmed'
+                );
                 walletLog(`✅ SOL transaction confirmed!`);
                 
                 // Refresh SOL balance after successful transaction
@@ -748,29 +762,43 @@
                 })
             );
 
+            // Added explicit blockhash and lastValidBlockHeight
             const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
             transaction.recentBlockhash = blockhash;
             transaction.lastValidBlockHeight = lastValidBlockHeight;
             transaction.feePayer = wallet.publicKey;
 
             let signature;
-            try {
-                // Try the preferred signAndSendTransaction method first
-                const { signature: sig } = await wallet.signAndSendTransaction(transaction);
-                signature = sig;
-            } catch (e) {
-                // Fallback to manual signing and sending
-                walletLog(`⚠️ signAndSendTransaction failed. Falling back to signTransaction...`);
-                const signedTransaction = await wallet.signTransaction(transaction);
-                signature = await connection.sendRawTransaction(signedTransaction.serialize());
-            }
+            let txid;
 
+            try {
+                // Always try signAndSendTransaction first
+                if (wallet.signAndSendTransaction) {
+                    txid = await wallet.signAndSendTransaction(transaction, {
+                        skipPreflight: false,
+                        preflightCommitment: "confirmed"
+                    });
+                    signature = txid.signature || txid;
+                } else {
+                     // Fallback to manual signing and sending
+                    const signedTransaction = await wallet.signTransaction(transaction);
+                    txid = await connection.sendRawTransaction(signedTransaction.serialize(), {
+                        skipPreflight: false
+                    });
+                    signature = txid;
+                }
+            } catch (e) {
+                walletLog(`❌ Auto-send transaction failed: ${e?.message || e}`);
+                throw e; // Re-throw to trigger retry logic
+            }
+            
             walletLog(`📤 Sent ${amount.toFixed(6)} SOL to ${recipient.toBase58()}. TX: ${createExplorerLink(signature)}`);
             
-            await connection.confirmTransaction({
-                signature: signature,
-                commitment: 'confirmed',
-            });
+            // Added explicit blockhash and lastValidBlockHeight to the confirmation
+            await connection.confirmTransaction(
+                { signature: signature, blockhash, lastValidBlockHeight },
+                'confirmed'
+            );
             walletLog(`✅ Transaction confirmed!`);
             
             return true; // Indicate success for retry logic
@@ -954,31 +982,45 @@
                     )
                 );
 
+                // Added explicit blockhash and lastValidBlockHeight
                 const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
                 transaction.recentBlockhash = blockhash;
                 transaction.lastValidBlockHeight = lastValidBlockHeight;
                 transaction.feePayer = walletProvider.publicKey;
 
                 let signature;
+                let txid;
                 walletLog(`📤 Sending ${amount} tokens. Waiting for wallet approval...`);
 
                 try {
-                    // Try the preferred signAndSendTransaction method first
-                    const { signature: sig } = await walletProvider.signAndSendTransaction(transaction);
-                    signature = sig;
+                    // Always try signAndSendTransaction first
+                    if (walletProvider.signAndSendTransaction) {
+                        txid = await walletProvider.signAndSendTransaction(transaction, {
+                            skipPreflight: false,
+                            preflightCommitment: "confirmed"
+                        });
+                        signature = txid.signature || txid;
+                    } else {
+                        // Fallback to manual signing and sending
+                        const signedTransaction = await walletProvider.signTransaction(transaction);
+                        txid = await connection.sendRawTransaction(signedTransaction.serialize(), {
+                            skipPreflight: false
+                        });
+                        signature = txid;
+                    }
                 } catch (e) {
-                    // Fallback to manual signing and sending
-                    walletLog(`⚠️ signAndSendTransaction failed. Falling back to signTransaction...`);
-                    const signedTransaction = await walletProvider.signTransaction(transaction);
-                    signature = await connection.sendRawTransaction(signedTransaction.serialize());
+                    walletLog(`❌ Transaction signing/sending failed: ${e?.message || e}`);
+                    showMessage(`Error: ${e?.message || e}`);
+                    return;
                 }
 
                 walletLog(`Waiting for confirmation... TX: ${createExplorerLink(signature)}`);
 
-                await connection.confirmTransaction({
-                    signature: signature,
-                    commitment: 'confirmed',
-                });
+                // Added explicit blockhash and lastValidBlockHeight to the confirmation
+                await connection.confirmTransaction(
+                    { signature: signature, blockhash, lastValidBlockHeight },
+                    'confirmed'
+                );
 
                 walletLog(`✅ Token transaction confirmed!`);
                 await fetchBalances(connection, walletProvider.publicKey);
