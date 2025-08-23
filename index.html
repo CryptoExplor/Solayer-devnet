@@ -175,13 +175,14 @@
             border-top-color: #ddd;
         }
         .proxy-fetch-section {
-            display: flex;
+            display: grid;
+            grid-template-columns: 1fr 2fr;
             gap: 8px;
             align-items: flex-end;
             margin-top: 8px;
         }
-        .proxy-fetch-section input {
-            flex-grow: 1;
+        .proxy-fetch-section .full-width {
+            grid-column: 1 / -1;
         }
         .proxy-fetch-section button {
             width: auto;
@@ -194,6 +195,9 @@
                 padding: 10px;
             }
             .row {
+                grid-template-columns: 1fr;
+            }
+            .proxy-fetch-section {
                 grid-template-columns: 1fr;
             }
         }
@@ -231,14 +235,23 @@
                     <input id="amtFaucet" type="number" step="0.001" value="1" />
                 </div>
             </div>
-            <div class="proxy-fetch-section">
+            <!-- Start of new proxy selection UI -->
+            <div class="proxy-fetch-section full-width">
+                <div class="full-width">
+                    <label>Proxy Type</label>
+                    <select id="proxyTypeSelect">
+                        <option value="socks5">SOCKS5</option>
+                        <option value="socks4">SOCKS4</option>
+                        <option value="http">HTTP</option>
+                    </select>
+                </div>
                 <div>
                     <label>Proxy Source URL</label>
-                    <!-- Updated the default URL to the new GitHub source -->
-                    <input id="proxySourceUrl" type="url" value="https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt" />
+                    <input id="proxySourceUrl" type="url" readonly />
                 </div>
                 <button id="fetchProxiesBtn">Fetch Proxies</button>
             </div>
+            <!-- End of new proxy selection UI -->
             <div style="margin-top:8px">
                 <label>Proxy URL(s) (optional, one per line)</label>
                 <textarea id="proxyUrls" rows="3" placeholder="socks5://127.0.0.1:8080\nsocks5://another.proxy.com:8080\n..."></textarea>
@@ -369,6 +382,13 @@
         // Session history variables
         let sessionHistory = [];
         const SESSION_HISTORY_KEY = "faucetSessionHistory";
+
+        // Proxy source URLs
+        const proxySources = {
+            socks5: "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
+            socks4: "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks4.txt",
+            http: "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt"
+        };
         
         // Tooling for fetching proxies
         async function fetchTool(query, url) {
@@ -423,6 +443,10 @@
             if (storedSessionHistory) {
                 sessionHistory = JSON.parse(storedSessionHistory);
             }
+
+            // Set the initial proxy source URL based on the default selection
+            const proxyType = $("proxyTypeSelect").value;
+            $("proxySourceUrl").value = proxySources[proxyType];
             
             updateFaucetStats();
             setupEventListeners();
@@ -442,6 +466,13 @@
             const themeToggleBtn = $("themeToggle");
             const resetSessionBtn = $("resetSession");
             const fetchProxiesBtn = $("fetchProxiesBtn");
+
+            // New: Add a listener for the proxy type selection
+            const proxyTypeSelect = $("proxyTypeSelect");
+            proxyTypeSelect.onchange = (event) => {
+                const selectedType = event.target.value;
+                $("proxySourceUrl").value = proxySources[selectedType];
+            };
 
             // Add handler for addresses textarea to create pills on input
             const addrsFaucetTextarea = $("addrsFaucet");
@@ -795,7 +826,7 @@
             $("startFaucet").disabled = disabled;
             $("stopFaucet").disabled = !disabled;
             $("fetchProxiesBtn").disabled = disabled;
-            $("proxySourceUrl").disabled = disabled;
+            $("proxyTypeSelect").disabled = disabled; // Disable the select dropdown
         }
 
         // Function to select a random RPC from the list
