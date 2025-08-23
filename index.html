@@ -42,6 +42,7 @@
         .pill.cooldown {
             border-color: var(--warn);
             color: var(--warn);
+            font-weight: bold;
         }
         .ok{border-color:#1e6f4f;color:#a9f3cd}
         .light-theme .ok {border-color:#65b38d; color: #378a5b;}
@@ -374,6 +375,7 @@
         let totalClaimsPerWallet = {}; // Total persistent counter
         let rpcUrls = [];
         let proxyUrls = []; // New array for proxy URLs
+        let isWaitingForCooldown = false; // New flag to prevent log spam
 
         // Timer variables
         let sessionTimerInterval = null;
@@ -829,10 +831,15 @@
                 }
                 
                 if (availableAddrs.length === 0) {
-                    fLog(`All wallets are on cooldown. Waiting for a wallet to become available.`);
-                    await sleep(1000);
+                    if (!isWaitingForCooldown) {
+                        fLog(`All wallets are on cooldown. Waiting for a wallet to become available...`);
+                        isWaitingForCooldown = true;
+                    }
+                    await sleep(5000); // Wait for a longer period
                     continue;
                 }
+                
+                isWaitingForCooldown = false; // Reset the flag
                 
                 // Pick a random available address
                 const randomIndex = Math.floor(Math.random() * availableAddrs.length);
