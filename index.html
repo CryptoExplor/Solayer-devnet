@@ -187,6 +187,17 @@
         .proxy-fetch-section button {
             width: auto;
         }
+
+        .proxy-links {
+            margin-top: 4px;
+        }
+        .proxy-links ul {
+            list-style-type: disc;
+            margin-left: 20px;
+        }
+        .proxy-links li {
+            margin-bottom: 4px;
+        }
         
         /* Mobile-first adjustments for better responsiveness */
         @media (max-width: 600px) {
@@ -238,6 +249,14 @@
             <div style="margin-top:8px">
                 <label>Proxy URL(s) (optional, one per line)</label>
                 <textarea id="proxyUrls" rows="3" placeholder="socks5://127.0.0.1:8080&#10;socks5://another.proxy.com:8080&#10;..."></textarea>
+                <div class="proxy-links">
+                    <p class="muted">You can manually copy a list from one of these sources:</p>
+                    <ul>
+                        <li><a href="https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt" target="_blank">SOCKS5 Proxy List</a></li>
+                        <li><a href="https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks4.txt" target="_blank">SOCKS4 Proxy List</a></li>
+                        <li><a href="https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt" target="_blank">HTTP Proxy List</a></li>
+                    </ul>
+                </div>
             </div>
             <div class="row" style="margin-top:8px">
                 <div>
@@ -313,7 +332,6 @@
 
             <h3>How to Configure</h3>
             <p>
-                To get started, simply follow these steps:
                 <ul>
                     <li><strong>RPC URL(s):</strong> Enter one or more RPC endpoints, separated by a comma. The app will randomly select one for each claim attempt to balance the load.</li>
                     <li><strong>Proxy URL(s):</strong> If you are running into rate limits, you can enter one or more proxy URLs. The app will randomly use a proxy for each request.</li>
