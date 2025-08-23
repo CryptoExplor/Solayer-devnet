@@ -174,6 +174,18 @@
         .light-theme .guide-section {
             border-top-color: #ddd;
         }
+        .proxy-fetch-section {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+            margin-top: 8px;
+        }
+        .proxy-fetch-section input {
+            flex-grow: 1;
+        }
+        .proxy-fetch-section button {
+            width: auto;
+        }
         
         /* Mobile-first adjustments for better responsiveness */
         @media (max-width: 600px) {
@@ -218,6 +230,13 @@
                     <label>Amount per airdrop (SOL)</label>
                     <input id="amtFaucet" type="number" step="0.001" value="1" />
                 </div>
+            </div>
+            <div class="proxy-fetch-section">
+                <div>
+                    <label>Proxy Source URL</label>
+                    <input id="proxySourceUrl" type="url" value="https://www.freeproxy.world/?type=socks5&anonymity=4&speed=500" />
+                </div>
+                <button id="fetchProxiesBtn">Fetch Proxies</button>
             </div>
             <div style="margin-top:8px">
                 <label>Proxy URL(s) (optional, one per line)</label>
@@ -349,7 +368,31 @@
         // Session history variables
         let sessionHistory = [];
         const SESSION_HISTORY_KEY = "faucetSessionHistory";
+        
+        // Tooling for fetching proxies
+        async function fetchTool(query, url) {
+            try {
+                // The tool call to fetch the content from the proxy website
+                const response = await fetch('/api/v1/browsing', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query: query, url: url }),
+                });
 
+                if (!response.ok) {
+                    throw new Error(`Error fetching content: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                return result.content;
+            } catch (error) {
+                console.error("Tool call failed:", error);
+                throw error;
+            }
+        }
+        
         // Helper function to create a clickable explorer link
         function createExplorerLink(signature) {
             const explorerBaseUrl = "https://explorer.solayer.org";
@@ -397,6 +440,7 @@
             const faucetModeSelect = $("faucetMode");
             const themeToggleBtn = $("themeToggle");
             const resetSessionBtn = $("resetSession");
+            const fetchProxiesBtn = $("fetchProxiesBtn");
 
             // Add handler for addresses textarea to create pills on input
             const addrsFaucetTextarea = $("addrsFaucet");
@@ -436,6 +480,7 @@
             downloadClaimsBtn.onclick = downloadClaims;
             faucetModeSelect.onchange = handleFaucetModeChange;
             themeToggleBtn.onclick = toggleTheme;
+            fetchProxiesBtn.onclick = fetchProxies;
             
             // New reset session button handler
             resetSessionBtn.onclick = () => {
@@ -678,6 +723,54 @@
             }
         }
 
+        // ===== Proxy Fetching Logic =====
+        async function fetchProxies() {
+            const proxySourceUrl = $("proxySourceUrl").value;
+            if (!proxySourceUrl) {
+                showMessage("Please enter a proxy source URL.");
+                return;
+            }
+            
+            fLog(`Fetching proxies from ${proxySourceUrl}...`);
+            const fetchBtn = $("fetchProxiesBtn");
+            const originalBtnText = fetchBtn.textContent;
+            fetchBtn.textContent = "Fetching...";
+            fetchBtn.disabled = true;
+            
+            try {
+                const htmlContent = await fetchTool("Fetch proxies from `freeproxy.world`", proxySourceUrl);
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlContent, 'text/html');
+                const rows = doc.querySelectorAll('table.data-table tbody tr');
+                
+                let proxies = [];
+                rows.forEach(row => {
+                    const columns = row.querySelectorAll('td');
+                    if (columns.length > 1) {
+                        const ip = columns[0].textContent.trim();
+                        const port = columns[1].textContent.trim();
+                        const type = columns[4].textContent.trim().toLowerCase();
+                        if (type === 'socks5') {
+                            proxies.push(`socks5://${ip}:${port}`);
+                        }
+                    }
+                });
+                
+                if (proxies.length > 0) {
+                    $("proxyUrls").value = proxies.join('\n');
+                    fLog(`✅ Successfully fetched ${proxies.length} SOCKS5 proxies.`);
+                } else {
+                    fLog(`⚠️ No SOCKS5 proxies found in the fetched content.`);
+                }
+            } catch (error) {
+                fLog(`❌ Failed to fetch proxies: ${error.message}`);
+            } finally {
+                fetchBtn.textContent = originalBtnText;
+                fetchBtn.disabled = false;
+            }
+        }
+
+
         // ===== Faucet Auto‑Claimer Logic =====
         function fLog(msg) {
             const ts = new Date().toLocaleTimeString();
@@ -714,6 +807,8 @@
             $("cooldown").disabled = disabled;
             $("startFaucet").disabled = disabled;
             $("stopFaucet").disabled = !disabled;
+            $("fetchProxiesBtn").disabled = disabled;
+            $("proxySourceUrl").disabled = disabled;
         }
 
         // Function to select a random RPC from the list
