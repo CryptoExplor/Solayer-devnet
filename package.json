@@ -1,0 +1,13 @@
+{
+  "name": "solana-faucet-app",
+  "version": "1.0.0",
+  "description": "A Solana Faucet client using a Vercel serverless function to handle airdrops with proxies.",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.91.1",
+    "https-proxy-agent": "^7.0.4",
+    "socks-proxy-agent": "^8.0.2"
+  }
+}
