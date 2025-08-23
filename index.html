@@ -174,6 +174,17 @@
         .light-theme .guide-section {
             border-top-color: #ddd;
         }
+        
+        /* Mobile-first adjustments for better responsiveness */
+        @media (max-width: 600px) {
+            .wrap {
+                margin: 10px;
+                padding: 10px;
+            }
+            .row {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -207,6 +218,10 @@
                     <label>Amount per airdrop (SOL)</label>
                     <input id="amtFaucet" type="number" step="0.001" value="1" />
                 </div>
+            </div>
+            <div style="margin-top:8px">
+                <label>Proxy URL(s) (optional, one per line)</label>
+                <textarea id="proxyUrls" rows="3" placeholder="http://user:pass@127.0.0.1:8080\nhttp://another.proxy.com:8080\n..."></textarea>
             </div>
             <div class="row" style="margin-top:8px">
                 <div>
@@ -278,13 +293,14 @@
         <!-- Guide Section -->
         <section class="guide-section">
             <h2>Guide for Using the Auto-Claimer</h2>
-            <p>This application helps you automatically claim SOL from the Solayer Devnet Faucet across multiple wallets. It's designed to be resilient, with features like multi-RPC randomization and error analytics to give you a smooth experience.</p>
+            <p>This application helps you automatically claim SOL from the Solayer Devnet Faucet across multiple wallets. It's designed to be resilient, with features like multi-RPC randomization, proxy support, and error analytics to give you a smooth experience.</p>
 
             <h3>How to Configure</h3>
             <p>
                 To get started, simply follow these steps:
                 <ul>
                     <li><strong>RPC URL(s):</strong> Enter one or more RPC endpoints, separated by a comma. The app will randomly select one for each claim attempt to balance the load.</li>
+                    <li><strong>Proxy URL(s):</strong> If you are running into rate limits, you can enter one or more proxy URLs. The app will randomly use a proxy for each request.</li>
                     <li><strong>Wallet addresses:</strong> Paste the list of wallet public keys, with one address on each new line.</li>
                     <li><strong>Amount & Delay:</strong> Set the amount of SOL to claim per airdrop and the minimum/maximum delay between each claim. The app will use a random delay within this range.</li>
                     <li><strong>Skip & Cooldown:</strong> Use the "Skip If Balance" field to prevent claiming on wallets that already have enough SOL. The "Cooldown" setting prevents the app from spamming a single wallet, ensuring your requests don't get throttled.</li>
@@ -323,6 +339,7 @@
         let claimsPerSession = {}; // Per-session counter
         let totalClaimsPerWallet = {}; // Total persistent counter
         let rpcUrls = [];
+        let proxyUrls = []; // New array for proxy URLs
 
         // Timer variables
         let sessionTimerInterval = null;
@@ -338,7 +355,20 @@
             const explorerBaseUrl = "https://explorer.solayer.org";
             return `<a href="${explorerBaseUrl}/tx/${signature}" target="_blank">${signature.substring(0, 8)}...</a>`;
         }
-
+        
+        // Custom message box
+        function showMessage(msg) {
+            const msgBox = $('message-box');
+            const msgText = $('message-text');
+            msgText.textContent = msg;
+            msgBox.classList.remove('hidden');
+            msgBox.classList.add('show');
+            setTimeout(() => {
+                msgBox.classList.add('hidden');
+                msgBox.classList.remove('show');
+            }, 4000);
+        }
+        
         window.onload = function() {
             // Restore persistent total stats and session history from localStorage on page load
             const storedTotalClaims = localStorage.getItem("totalClaimsPerWallet");
@@ -356,19 +386,6 @@
             renderSessionHistory(); // Render the history log on load
         };
 
-        // Custom message box
-        function showMessage(msg) {
-            const msgBox = $('message-box');
-            const msgText = $('message-text');
-            msgText.textContent = msg;
-            msgBox.classList.remove('hidden');
-            msgBox.classList.add('show');
-            setTimeout(() => {
-                msgBox.classList.add('hidden');
-                msgBox.classList.remove('show');
-            }, 4000);
-        }
-        
         // Setup all event listeners
         function setupEventListeners() {
             // Faucet Buttons
@@ -526,7 +543,7 @@
                 logText += `  Total Claims: ${session.totalClaims}, Success: ${session.success}, Errors: ${session.fail}\n`;
                 logText += `  Duration: ${formatTime(session.elapsedTime)}\n`;
                 for (const [addr, claims] of Object.entries(session.walletClaims)) {
-                    logText += `  - ${addr.substring(0, 8)}...: ${claims} claims\n`;
+                    logText += `  - ${addr.substring(0, 0)}...: ${claims} claims\n`;
                 }
                 logText += '\n';
             });
@@ -704,6 +721,13 @@
             const randomIndex = Math.floor(Math.random() * rpcUrls.length);
             return new solanaWeb3.Connection(rpcUrls[randomIndex], { commitment: 'confirmed' });
         }
+        
+        // Function to select a random proxy from the list
+        function getRandomProxy() {
+            if (proxyUrls.length === 0) return null;
+            const randomIndex = Math.floor(Math.random() * proxyUrls.length);
+            return proxyUrls[randomIndex];
+        }
 
         async function faucetLoop(addresses) {
             claimsPerSession = {};
@@ -712,6 +736,7 @@
             createWalletStatusPills(addresses);
 
             const rpcInput = $("rpcFaucet").value.trim();
+            const proxyInput = $("proxyUrls").value.trim();
             const amountSol = parseFloat($("amtFaucet").value || '0.1');
             const minDelay = parseInt($("minDelay").value) || 1000;
             const maxDelay = parseInt($("maxDelay").value) || 5000;
@@ -719,6 +744,8 @@
             const cooldownSec = parseInt($("cooldown").value) || 60;
             
             rpcUrls = rpcInput.split(',').map(url => url.trim()).filter(Boolean);
+            proxyUrls = proxyInput.split('\n').map(url => url.trim()).filter(Boolean); // Split by newline for proxies
+
             if (!rpcUrls.length) {
                 showMessage('Please enter at least one RPC URL.');
                 return;
@@ -746,6 +773,9 @@
             sessionTimerInterval = setInterval(updateSessionTimer, 1000);
             
             fLog(`Connecting to RPC(s) → ${rpcUrls.join(', ')}`);
+            if (proxyUrls.length > 0) {
+                 fLog(`Using Proxies → ${proxyUrls.join(', ')}`);
+            }
 
             while (faucetRun) {
                 const sessionClaims = Object.values(claimsPerSession).reduce((sum, count) => sum + count, 0);
@@ -817,7 +847,8 @@
                 
                 let airdropSuccess = false;
                 let retryCount = 0;
-                while (retryCount < 5 && faucetRun) {
+                const maxRetries = 5;
+                while (retryCount < maxRetries && faucetRun) {
                     try {
                         const connection = getRandomRpc(); // Randomly pick an RPC for the airdrop
                         fLog(`Attempt ${retryCount + 1}: Using RPC ${connection._rpcEndpoint}`);
@@ -827,7 +858,7 @@
                         airdropSuccess = true;
                         break;
                     } catch (e) {
-                        const delay = Math.min(Math.pow(2, retryCount) * 1000, 30000);
+                        const delay = Math.min(Math.pow(2, retryCount) * 1000, 30000); // Exponential backoff
                         fLog(`❌ Error on attempt ${retryCount + 1}: ${e?.message || e}`);
                         
                         // Categorize and log the error
@@ -835,8 +866,10 @@
                         const errorCategory = categorizeError(errorMessage);
                         incrementErrorCount(errorCategory);
                         
-                        fLog(`Retrying in ${delay / 1000}s...`);
-                        await sleep(delay);
+                        if (retryCount < maxRetries - 1) {
+                            fLog(`Retrying in ${delay / 1000}s...`);
+                            await sleep(delay);
+                        }
 
                         if (!faucetRun) {
                             break;
@@ -854,11 +887,11 @@
                     // Set cooldown for this wallet using the new configurable value
                     walletCooldowns[addr] = Date.now() + cooldownSec * 1000;
                     
-                    updateWalletStatusUI(addr, 'success', `Airdrop successful.`);
+                    updateWalletStatusUI(addr, 'ok', `Airdrop successful.`);
                 } else {
                     faucetStats.fail++;
                     fLog(`❌ Failed to airdrop to ${addr} after multiple retries.`);
-                    updateWalletStatusUI(addr, 'fail', `Airdrop failed.`);
+                    updateWalletStatusUI(addr, 'err', `Airdrop failed.`);
                 }
                 
                 updateFaucetStats();
@@ -896,6 +929,8 @@
             if (errorMessage.includes('failed to get a response')) return 'Failed to Get Response';
             if (errorMessage.includes('airdrop request refused')) return 'Airdrop Refused';
             if (errorMessage.includes('invalid publickey')) return 'Invalid Address';
+            if (errorMessage.includes('account not found')) return 'Account Too New';
+            if (errorMessage.includes('transaction simulation failed')) return 'Simulation Failed';
             return 'Other/Unknown Error';
         }
 
