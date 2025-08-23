@@ -3,188 +3,572 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solayer Devnet — Deploy Tool</title>
-    <!-- Tailwind CSS for modern styling -->
+    <title>Solana Devnet/Testnet Faucet & Token/NFT Deploy</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Solana Web3 library -->
     <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
-    <!-- SPL Token library for token deployment -->
     <script src="https://unpkg.com/@solana/spl-token@0.4.8/lib/index.iife.min.js"></script>
-    <!-- Metaplex JS library for NFT deployment -->
     <script src="https://unpkg.com/@metaplex-foundation/js@0.20.1/dist/web/index.iife.js"></script>
     <style>
-        /* Custom styles for the app's layout and log panel */
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Arial', sans-serif;
             background-color: #f3f4f6;
         }
         #activityLog {
             max-height: 200px;
             overflow-y: auto;
-            white-space: pre-wrap;
-            word-wrap: break-word;
         }
-        .container {
-            max-width: 800px;
+        .error-analytics {
+            margin-top: 1rem;
         }
     </style>
 </head>
-<body class="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-    <div class="container mx-auto p-4 md:p-8 bg-white rounded-lg shadow-xl">
-        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Solana Deployment Tool</h1>
+<body class="min-h-screen bg-gray-100">
+    <div class="container mx-auto p-4">
+        <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">Solana Devnet/Testnet Faucet & Token/NFT Deploy</h1>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Left Panel: Controls -->
-            <div class="bg-white p-6 rounded-lg shadow-inner border border-gray-200">
-                <!-- Wallet Connection Section -->
-                <div class="mb-6 pb-4 border-b border-gray-200">
-                    <h2 class="text-xl font-semibold text-gray-800 mb-2">Wallet</h2>
-                    <button id="connectWallet" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400 font-bold transition-colors">Connect Wallet</button>
-                    <p id="walletStatus" class="mt-2 text-sm text-gray-600 text-center truncate"></p>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <!-- Network Selection -->
+                <div class="mb-4">
+                    <label for="network" class="block text-sm font-medium text-gray-700">Network</label>
+                    <select id="network" class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                        <option value="devnet">Devnet</option>
+                        <option value="testnet">Testnet</option>
+                    </select>
                 </div>
-                
+
+                <!-- Wallet Connection -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">Wallet</label>
+                    <button id="connectWallet" class="w-full bg-green-600 text-white p-2 rounded-md hover:bg-green-700">Connect Wallet</button>
+                    <p id="walletStatus" class="mt-2 text-sm text-gray-600"></p>
+                </div>
+
+                <!-- Faucet Claim Section -->
+                <div class="mb-6">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">Faucet Claim</h2>
+                    <div class="mb-4">
+                        <label for="rpcUrls" class="block text-sm font-medium text-gray-700">RPC URL(s) (comma-separated)</label>
+                        <input id="rpcUrls" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" value="https://api.devnet.solana.com,https://api.testnet.solana.com" placeholder="https://api.devnet.solana.com">
+                    </div>
+                    <div class="mb-4">
+                        <label for="amount" class="block text-sm font-medium text-gray-700">Amount per Airdrop (SOL)</label>
+                        <input id="amount" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" value="2" min="0.1" max="5">
+                    </div>
+                    <div class="mb-4">
+                        <label for="proxies" class="block text-sm font-medium text-gray-700">Proxy URL(s) (one per line, optional)</label>
+                        <textarea id="proxies" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" rows="4" placeholder="http://proxy1:port\nhttp://proxy2:port"></textarea>
+                        <button id="testProxiesButton" class="mt-2 w-full bg-yellow-600 text-white p-2 rounded-md hover:bg-yellow-700">Test Proxies</button>
+                    </div>
+                    <div class="mb-4">
+                        <label for="addresses" class="block text-sm font-medium text-gray-700">Wallet Addresses (one per line)</label>
+                        <textarea id="addresses" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" rows="4" placeholder="Address1\nAddress2\nAddress3"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label for="minDelay" class="block text-sm font-medium text-gray-700">Min Delay (ms)</label>
+                            <input id="minDelay" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" value="10000" min="1000">
+                        </div>
+                        <div>
+                            <label for="maxDelay" class="block text-sm font-medium text-gray-700">Max Delay (ms)</label>
+                            <input id="maxDelay" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" value="15000" min="1000">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label for="skipBalance" class="block text-sm font-medium text-gray-700">Skip If Balance > (SOL)</label>
+                            <input id="skipBalance" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" value="2" min="0">
+                        </div>
+                        <div>
+                            <label for="cooldown" class="block text-sm font-medium text-gray-700">Cooldown per Wallet (sec)</label>
+                            <input id="cooldown" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" value="3600" min="0">
+                        </div>
+                    </div>
+                    <div class="flex gap-4">
+                        <button id="startFaucetButton" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400" onclick="startFaucetLoop()">▶ Start Faucet Loop</button>
+                        <button id="stopFaucetButton" class="w-full bg-red-600 text-white p-2 rounded-md hover:bg-red-700 disabled:bg-gray-400" onclick="stopFaucetLoop()" disabled>⏹ Stop</button>
+                    </div>
+                </div>
+
                 <!-- Token Deployment Section -->
-                <div class="mb-6 pb-4 border-b border-gray-200">
-                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Deploy SPL Token</h2>
-                    <div class="grid grid-cols-1 gap-4">
+                <div class="mb-6">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">Deploy SPL Token</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label for="tokenName" class="block text-sm font-medium text-gray-700">Token Name</label>
-                            <input id="tokenName" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="My Token">
+                            <input id="tokenName" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="My Token">
                         </div>
                         <div>
                             <label for="tokenSymbol" class="block text-sm font-medium text-gray-700">Token Symbol</label>
-                            <input id="tokenSymbol" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="MTK">
+                            <input id="tokenSymbol" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="MTK">
                         </div>
                         <div>
                             <label for="tokenDecimals" class="block text-sm font-medium text-gray-700">Decimals</label>
-                            <input id="tokenDecimals" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="6" min="0" max="18">
+                            <input id="tokenDecimals" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="6" min="0" max="18">
                         </div>
                         <div>
                             <label for="tokenSupply" class="block text-sm font-medium text-gray-700">Initial Supply</label>
-                            <input id="tokenSupply" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="1000000" min="1">
+                            <input id="tokenSupply" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="1000000" min="1">
                         </div>
                     </div>
-                    <button id="deployTokenButton" class="w-full mt-6 bg-purple-600 text-white p-3 rounded-md hover:bg-purple-700 disabled:bg-gray-400 font-bold transition-colors">Deploy Token</button>
+                    <button id="deployTokenButton" class="w-full mt-4 bg-purple-600 text-white p-2 rounded-md hover:bg-purple-700 disabled:bg-gray-400" onclick="deployToken()">Deploy Token</button>
                 </div>
-                
+
                 <!-- NFT Deployment Section -->
-                <div class="mb-4">
-                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Deploy NFT</h2>
-                    <div class="grid grid-cols-1 gap-4">
+                <div class="mb-6">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">Deploy NFT</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label for="nftName" class="block text-sm font-medium text-gray-700">NFT Name</label>
-                            <input id="nftName" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="My NFT">
+                            <input id="nftName" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="My NFT">
                         </div>
                         <div>
                             <label for="nftSymbol" class="block text-sm font-medium text-gray-700">NFT Symbol</label>
-                            <input id="nftSymbol" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="NFT">
+                            <input id="nftSymbol" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="NFT">
                         </div>
                         <div>
-                            <label for="nftUri" class="block text-sm font-medium text-gray-700">Metadata URI</label>
-                            <input id="nftUri" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="https://arweave.net/your-file">
+                            <label for="nftUri" class="block text-sm font-medium text-gray-700">Metadata URI (e.g., Arweave/IPFS)</label>
+                            <input id="nftUri" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="https://arweave.net/your-file">
                         </div>
                         <div>
                             <label for="nftRoyalty" class="block text-sm font-medium text-gray-700">Royalty (%)</label>
-                            <input id="nftRoyalty" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="5" min="0" max="100">
+                            <input id="nftRoyalty" type="number" class="mt-1 block w-4ull p-2 border border-gray-300 rounded-md" placeholder="5" min="0" max="100">
                         </div>
                     </div>
-                    <button id="deployNftButton" class="w-full mt-6 bg-teal-600 text-white p-3 rounded-md hover:bg-teal-700 disabled:bg-gray-400 font-bold transition-colors">Deploy NFT</button>
+                    <button id="deployNftButton" class="w-full mt-4 bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 disabled:bg-gray-400" onclick="deployNFT()">Deploy NFT</button>
                 </div>
             </div>
 
-            <!-- Right Panel: Logs and Stats -->
-            <div class="bg-white p-6 rounded-lg shadow-inner border border-gray-200">
-                <h2 class="text-xl font-semibold text-gray-800 mb-2">Activity Log</h2>
-                <div id="activityLog" class="text-sm text-gray-600 border p-4 rounded-md bg-gray-50 h-64">
-                    <p>Connect your wallet to get started.</p>
+            <!-- Right Panel: Logs and Analytics -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">Stats</h2>
+                    <div id="stats" class="text-sm text-gray-600">
+                        <p>Total: <span id="totalClaims">0</span></p>
+                        <p>Success: <span id="successClaims">0</span></p>
+                        <p>Errors: <span id="errorClaims">0</span></p>
+                        <p>⏱ <span id="elapsedTime">0s</span></p>
+                    </div>
+                    <div class="flex gap-4 mt-4">
+                        <button id="clearLogButton" class="w-full bg-gray-600 text-white p-2 rounded-md hover:bg-gray-700" onclick="clearLog()">🧹 Clear Log & Stats</button>
+                        <button id="downloadLogButton" class="w-full bg-gray-600 text-white p-2 rounded-md hover:bg-gray-700" onclick="downloadLog()">⬇️ Download Log</button>
+                    </div>
+                    <div class="flex gap-4 mt-4">
+                        <button id="resetSessionButton" class="w-full bg-gray-600 text-white p-2 rounded-md hover:bg-gray-700" onclick="resetSession()">♻️ Reset Session Counts</button>
+                        <button id="exportClaimsButton" class="w-full bg-gray-600 text-white p-2 rounded-md hover:bg-gray-700" onclick="exportClaims()">⬇️ Export Claims JSON</button>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">Error Analytics</h2>
+                    <div id="errorAnalytics" class="text-sm text-gray-600"></div>
+                </div>
+                <div class="mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">Activity Log</h2>
+                    <div id="activityLog" class="text-sm text-gray-600 border p-2 rounded-md"></div>
+                    <label class="mt-2 flex items-center">
+                        <input id="pauseScroll" type="checkbox" class="mr-2">
+                        Pause auto-scroll
+                    </label>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">Session History</h2>
+                    <div id="sessionHistory" class="text-sm text-gray-600"></div>
                 </div>
             </div>
+        </div>
+
+        <!-- Guide Section -->
+        <div class="mt-6 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-lg font-semibold text-gray-800 mb-2">Guide for Using the Auto-Claimer</h2>
+            <p class="text-sm text-gray-600">This application helps you automatically claim SOL from the Solana Devnet/Testnet Faucet across multiple wallets and deploy SPL tokens/NFTs. Features include multi-RPC randomization, proxy support, and error analytics.</p>
+            <h3 class="text-md font-semibold text-gray-800 mt-4">Devnet/Testnet Faucet Limits</h3>
+            <ul class="text-sm text-gray-600 list-disc pl-5">
+                <li>Official Faucet: 5 SOL per request, 2 requests every 8 hours per address/IP (~10 SOL daily).</li>
+                <li>QuickNode: 0.1 SOL per request, several daily.</li>
+                <li>SOLFaucet: 1 SOL per request, 1 every 24 hours.</li>
+                <li>Rate Limit: 1 airdrop request per 10 seconds per IP.</li>
+            </ul>
+            <h3 class="text-md font-semibold text-gray-800 mt-4">How to Configure</h3>
+            <ul class="text-sm text-gray-600 list-disc pl-5">
+                <li><strong>RPC URL(s)</strong>: Enter comma-separated RPC endpoints. The app randomizes for load balancing.</li>
+                <li><strong>Proxy URL(s)</strong>: Add proxies to bypass rate limits (one per line).</li>
+                <li><strong>Wallet Addresses</strong>: List public keys (one per line).</li>
+                <li><strong>Amount & Delay</strong>: Set SOL amount (≤5) and delay range (ms).</li>
+                <li><strong>Skip & Cooldown</strong>: Skip wallets with balance > specified SOL; set cooldown to avoid throttling.</li>
+                <li><strong>Token/NFT</strong>: Enter token/NFT details and deploy using connected wallet.</li>
+            </ul>
+            <p class="text-sm text-gray-600 mt-4">For more details, visit: <a href="https://github.com/CryptoExplor/Solana-faucet-devnet-testnet-autoclaimer" class="text-blue-600">GitHub</a></p>
         </div>
     </div>
 
     <script>
-        // Import necessary components from the Solana libraries
         const { PublicKey, Connection, Keypair } = solanaWeb3;
         const { createMint, getOrCreateAssociatedTokenAccount, mintTo } = solanaSPLToken;
         const { Metaplex } = metaplexJs;
-        
+
+        const API_ENDPOINT = "/api/airdrop"; // Vercel serverless function
         let wallet = null;
+        let isFaucetRunning = false;
+        let stats = { total: 0, success: 0, errors: 0, startTime: null };
+        let errors = {};
+        let sessionHistory = [];
+        let activityLog = [];
 
-        // Log messages to the UI
-        function log(message, type = 'info') {
-            const logDiv = document.getElementById("activityLog");
-            const p = document.createElement("p");
-            p.innerHTML = message;
-            if (type === 'success') {
-                p.classList.add("text-green-600");
-            } else if (type === 'error') {
-                p.classList.add("text-red-600");
-            } else {
-                p.classList.add("text-gray-600");
-            }
-            logDiv.appendChild(p);
-            logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll
-        }
-
-        // Connect to the Phantom wallet
+        // Wallet Connection
         async function connectWallet() {
             const connectButton = document.getElementById("connectWallet");
             const walletStatus = document.getElementById("walletStatus");
-            connectButton.disabled = true;
-            connectButton.textContent = "Connecting...";
-
             try {
                 if (window.solana && window.solana.isPhantom) {
                     await window.solana.connect();
                     wallet = window.solana;
                     walletStatus.innerText = `Connected: ${wallet.publicKey.toString()}`;
                     connectButton.textContent = "Wallet Connected";
-                    connectButton.classList.remove("bg-blue-600", "hover:bg-blue-700");
-                    connectButton.classList.add("bg-gray-400");
-                    log(`Wallet connected: ${wallet.publicKey.toString()}`, 'success');
+                    connectButton.disabled = true;
+                    checkWalletBalance();
                 } else {
                     walletStatus.innerText = "Phantom wallet not found. Please install it.";
-                    log("Phantom wallet not found. Please install it.", 'error');
                 }
             } catch (error) {
                 walletStatus.innerText = `Connection failed: ${error.message}`;
-                log(`Connection failed: ${error.message}`, 'error');
-            } finally {
-                // Re-enable the button if it's still in the connecting state
-                if (connectButton.textContent === "Connecting...") {
-                    connectButton.disabled = false;
-                    connectButton.textContent = "Connect Wallet";
+            }
+        }
+
+        async function checkWalletBalance() {
+            const network = document.getElementById("network").value;
+            const resultsDiv = document.getElementById("activityLog");
+            if (!wallet) return;
+            try {
+                const connection = new Connection(RPC_URLS[network], "confirmed");
+                const balance = await connection.getBalance(wallet.publicKey);
+                resultsDiv.innerHTML += `<p>Wallet ${wallet.publicKey.toString()}: Balance ${balance / 1_000_000_000} SOL</p>`;
+                scrollLog();
+            } catch (error) {
+                resultsDiv.innerHTML += `<p class="text-red-600">Error checking wallet balance: ${error.message}</p>`;
+                scrollLog();
+            }
+        }
+
+        // Proxy Testing
+        async function testProxy(proxy, rpc) {
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        address: "11111111111111111111111111111111", // Dummy address for test
+                        amount: 1_000_000, // 0.001 SOL for test
+                        rpc,
+                        proxy
+                    })
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error: ${response.status}`);
+                }
+                const result = await response.json();
+                return { success: result.signature ? true : false, message: result.signature ? "Proxy working" : result.message };
+            } catch (error) {
+                return { success: false, message: `Proxy failed: ${error.message}` };
+            }
+        }
+
+        async function testProxies() {
+            const proxiesInput = document.getElementById("proxies").value.trim();
+            const rpcUrls = document.getElementById("rpcUrls").value.split(",").map(url => url.trim()).filter(url => url);
+            const activityLogDiv = document.getElementById("activityLog");
+            const testButton = document.getElementById("testProxiesButton");
+
+            testButton.disabled = true;
+            testButton.textContent = "Testing...";
+            activityLogDiv.innerHTML += `<p class="text-blue-600">Testing proxies...</p>`;
+            scrollLog();
+
+            if (!proxiesInput) {
+                activityLogDiv.innerHTML += `<p class="text-red-600">No proxies provided.</p>`;
+                testButton.disabled = false;
+                testButton.textContent = "Test Proxies";
+                scrollLog();
+                return;
+            }
+
+            const proxies = proxiesInput.split("\n").map(proxy => proxy.trim()).filter(proxy => proxy);
+            const validProxies = [];
+
+            for (const proxy of proxies) {
+                const rpc = rpcUrls[Math.floor(Math.random() * rpcUrls.length)];
+                const result = await testProxy(proxy, rpc);
+                activityLogDiv.innerHTML += `<p>${proxy}: <span class="${result.success ? 'text-green-600' : 'text-red-600'}">${result.message}</span></p>`;
+                scrollLog();
+                if (result.success) validProxies.push(proxy);
+                if (!result.success) {
+                    errors[result.message] = (errors[result.message] || 0) + 1;
+                    updateErrorAnalytics();
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+            document.getElementById("proxies").value = validProxies.join("\n");
+            activityLogDiv.innerHTML += `<p class="text-green-600">Proxy testing complete. ${validProxies.length}/${proxies.length} proxies valid.</p>`;
+            scrollLog();
+            testButton.disabled = false;
+            testButton.textContent = "Test Proxies";
+        }
+
+        // Faucet Functions
+        const RPC_URLS = {
+            devnet: "https://api.devnet.solana.com",
+            testnet: "https://api.testnet.solana.com"
+        };
+
+        async function checkBalance(address, network) {
+            try {
+                const connection = new Connection(RPC_URLS[network], "confirmed");
+                const publicKey = new PublicKey(address);
+                const balance = await connection.getBalance(publicKey);
+                return balance / 1_000_000_000;
+            } catch (error) {
+                console.error(`Error checking balance for ${address}:`, error);
+                return 0;
+            }
+        }
+
+        async function requestAirdrop(address, amount, rpc, proxy = null) {
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        address,
+                        amount: amount * 1_000_000_000, // Convert SOL to lamports
+                        rpc,
+                        proxy
+                    })
+                });
+                if (!response.ok) {
+                    const errorBody = await response.json();
+                    throw new Error(errorBody.message || `HTTP error: ${response.status}`);
+                }
+                const result = await response.json();
+                return { success: true, message: `Airdrop requested: ${result.signature}` };
+            } catch (error) {
+                return { success: false, message: `Airdrop failed: ${error.message}` };
+            }
+        }
+
+        async function startFaucetLoop() {
+            if (isFaucetRunning) return;
+            isFaucetRunning = true;
+            const network = document.getElementById("network").value;
+            const addressesInput = document.getElementById("addresses").value.trim();
+            const proxiesInput = document.getElementById("proxies").value.trim();
+            const rpcUrls = document.getElementById("rpcUrls").value.split(",").map(url => url.trim()).filter(url => url);
+            const amount = parseFloat(document.getElementById("amount").value) || 2;
+            const minDelay = parseInt(document.getElementById("minDelay").value) || 10000;
+            const maxDelay = parseInt(document.getElementById("maxDelay").value) || 15000;
+            const skipBalance = parseFloat(document.getElementById("skipBalance").value) || 2;
+            const cooldown = parseInt(document.getElementById("cooldown").value) || 3600;
+            const activityLogDiv = document.getElementById("activityLog");
+            const startButton = document.getElementById("startFaucetButton");
+            const stopButton = document.getElementById("stopFaucetButton");
+
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            stats.startTime = Date.now();
+            updateElapsedTime();
+
+            if (!addressesInput) {
+                activityLogDiv.innerHTML += `<p class="text-red-600">Error: Please enter at least one wallet address.</p>`;
+                scrollLog();
+                stopFaucetLoop();
+                return;
+            }
+
+            const addresses = addressesInput.split("\n").map(addr => addr.trim()).filter(addr => addr);
+            const proxies = proxiesInput ? proxiesInput.split("\n").map(proxy => proxy.trim()).filter(proxy => proxy) : [];
+            const lastClaimTimes = {};
+
+            for (const addr of addresses) {
+                try {
+                    new PublicKey(addr);
+                } catch (error) {
+                    activityLogDiv.innerHTML += `<p class="text-red-600">Invalid address: ${addr}</p>`;
+                    scrollLog();
+                    stopFaucetLoop();
+                    return;
+                }
+            }
+
+            activityLogDiv.innerHTML += `<p class="text-blue-600">Starting faucet loop for ${network}...</p>`;
+            scrollLog();
+
+            while (isFaucetRunning) {
+                for (const address of addresses) {
+                    if (!isFaucetRunning) break;
+
+                    const lastClaim = lastClaimTimes[address] || 0;
+                    if (Date.now() - lastClaim < cooldown * 1000) {
+                        activityLogDiv.innerHTML += `<p>${address}: Skipped (cooldown ${Math.ceil((cooldown * 1000 - (Date.now() - lastClaim)) / 1000)}s remaining)</p>`;
+                        scrollLog();
+                        continue;
+                    }
+
+                    const balance = await checkBalance(address, network);
+                    activityLogDiv.innerHTML += `<p>${address}: Balance ${balance} SOL</p>`;
+                    scrollLog();
+
+                    if (balance >= skipBalance) {
+                        activityLogDiv.innerHTML += `<p class="text-green-600">${address}: Sufficient balance, skipping.</p>`;
+                        scrollLog();
+                        continue;
+                    }
+
+                    const rpc = rpcUrls[Math.floor(Math.random() * rpcUrls.length)];
+                    const proxy = proxies.length > 0 ? proxies[Math.floor(Math.random() * proxies.length)] : null;
+                    activityLogDiv.innerHTML += `<p>Requesting ${amount} SOL for ${address} via ${rpc}${proxy ? ` (proxy: ${proxy})` : ''}...</p>`;
+                    scrollLog();
+
+                    stats.total++;
+                    const result = await requestAirdrop(address, amount, rpc, proxy);
+                    activityLogDiv.innerHTML += `<p>${address}: <span class="${result.success ? 'text-green-600' : 'text-red-600'}">${result.message}</span></p>`;
+                    scrollLog();
+
+                    if (result.success) {
+                        stats.success++;
+                        lastClaimTimes[address] = Date.now();
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        const newBalance = await checkBalance(address, network);
+                        activityLogDiv.innerHTML += `<p>${address}: New balance ${newBalance} SOL</p>`;
+                        scrollLog();
+                    } else {
+                        stats.errors++;
+                        errors[result.message] = (errors[result.message] || 0) + 1;
+                        updateErrorAnalytics();
+                    }
+
+                    updateStats();
+                    sessionHistory.push({ address, amount, rpc, proxy, success: result.success, message: result.message, timestamp: new Date().toISOString() });
+                    updateSessionHistory();
+
+                    const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
         }
 
-        // Deploy an SPL Token
+        function stopFaucetLoop() {
+            isFaucetRunning = false;
+            document.getElementById("startFaucetButton").disabled = false;
+            document.getElementById("stopFaucetButton").disabled = true;
+            document.getElementById("activityLog").innerHTML += `<p class="text-blue-600">Faucet loop stopped.</p>`;
+            scrollLog();
+            updateElapsedTime();
+        }
+
+        function updateStats() {
+            document.getElementById("totalClaims").innerText = stats.total;
+            document.getElementById("successClaims").innerText = stats.success;
+            document.getElementById("errorClaims").innerText = stats.errors;
+        }
+
+        function updateElapsedTime() {
+            if (stats.startTime) {
+                const elapsed = Math.floor((Date.now() - stats.startTime) / 1000);
+                document.getElementById("elapsedTime").innerText = `${elapsed}s`;
+                if (isFaucetRunning) setTimeout(updateElapsedTime, 1000);
+            }
+        }
+
+        function updateErrorAnalytics() {
+            const errorAnalyticsDiv = document.getElementById("errorAnalytics");
+            errorAnalyticsDiv.innerHTML = "<h3 class='text-md font-semibold'>Breakdown of Airdrop Failures</h3>";
+            for (const [error, count] of Object.entries(errors)) {
+                errorAnalyticsDiv.innerHTML += `<p>${error}: ${count}</p>`;
+            }
+        }
+
+        function updateSessionHistory() {
+            const sessionHistoryDiv = document.getElementById("sessionHistory");
+            sessionHistoryDiv.innerHTML = sessionHistory.map(entry => 
+                `<p>${entry.timestamp}: ${entry.address} - ${entry.amount} SOL via ${entry.rpc}${entry.proxy ? ` (proxy: ${entry.proxy})` : ''} - <span class="${entry.success ? 'text-green-600' : 'text-red-600'}">${entry.message}</span></p>`
+            ).join("");
+        }
+
+        function scrollLog() {
+            const logDiv = document.getElementById("activityLog");
+            if (!document.getElementById("pauseScroll").checked) {
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+        }
+
+        function clearLog() {
+            stats = { total: 0, success: 0, errors: 0, startTime: null };
+            errors = {};
+            activityLog = [];
+            document.getElementById("activityLog").innerHTML = "";
+            document.getElementById("errorAnalytics").innerHTML = "";
+            updateStats();
+            document.getElementById("elapsedTime").innerText = "0s";
+        }
+
+        function downloadLog() {
+            const logContent = document.getElementById("activityLog").innerText;
+            const blob = new Blob([logContent], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "faucet_log.txt";
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function resetSession() {
+            sessionHistory = [];
+            document.getElementById("sessionHistory").innerHTML = "";
+            clearLog();
+        }
+
+        function exportClaims() {
+            const blob = new Blob([JSON.stringify(sessionHistory, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "claims.json";
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Token Deployment
         async function deployToken() {
             if (!wallet) {
-                log("Please connect wallet first.", 'error');
+                document.getElementById("activityLog").innerHTML += `<p class="text-red-600">Please connect wallet first.</p>`;
+                scrollLog();
                 return;
             }
 
-            const network = 'devnet'; // Hardcoded as this is for the devnet faucet
+            const network = document.getElementById("network").value;
             const tokenName = document.getElementById("tokenName").value.trim();
             const tokenSymbol = document.getElementById("tokenSymbol").value.trim();
             const tokenDecimals = parseInt(document.getElementById("tokenDecimals").value) || 6;
             const tokenSupply = parseInt(document.getElementById("tokenSupply").value) || 1000000;
+            const activityLogDiv = document.getElementById("activityLog");
             const deployButton = document.getElementById("deployTokenButton");
 
             deployButton.disabled = true;
             deployButton.textContent = "Deploying...";
-            log(`Deploying token on ${network}...`, 'info');
+            activityLogDiv.innerHTML += `<p class="text-blue-600">Deploying token on ${network}...</p>`;
+            scrollLog();
 
             if (!tokenName || !tokenSymbol || tokenDecimals < 0 || tokenSupply <= 0) {
-                log("Please fill all token fields with valid values.", 'error');
+                activityLogDiv.innerHTML += `<p class="text-red-600">Please fill all token fields with valid values.</p>`;
+                scrollLog();
                 deployButton.disabled = false;
                 deployButton.textContent = "Deploy Token";
                 return;
             }
 
             try {
-                const connection = new Connection(solanaWeb3.clusterApiUrl(network), "confirmed");
+                const connection = new Connection(RPC_URLS[network], "confirmed");
                 const payer = wallet;
 
                 const mint = Keypair.generate();
@@ -216,47 +600,54 @@
                     tokenSupply * Math.pow(10, tokenDecimals)
                 );
 
-                log(`Token deployed: <strong>${tokenName} (${tokenSymbol})</strong><br>Mint Address: ${mintAccount.toBase58()}<br>Supply: ${tokenSupply} tokens`, 'success');
+                activityLogDiv.innerHTML += `<p class="text-green-600">Token deployed: ${tokenName} (${tokenSymbol})<br>Mint Address: ${mintAccount.toBase58()}<br>Supply: ${tokenSupply} tokens</p>`;
+                scrollLog();
             } catch (error) {
-                log(`Token deployment failed: ${error.message}`, 'error');
+                activityLogDiv.innerHTML += `<p class="text-red-600">Token deployment failed: ${error.message}</p>`;
+                errors[`Token deployment: ${error.message}`] = (errors[`Token deployment: ${error.message}`] || 0) + 1;
+                updateErrorAnalytics();
+                scrollLog();
             } finally {
                 deployButton.disabled = false;
                 deployButton.textContent = "Deploy Token";
             }
         }
 
-        // Deploy an NFT
+        // NFT Deployment
         async function deployNFT() {
             if (!wallet) {
-                log("Please connect wallet first.", 'error');
+                document.getElementById("activityLog").innerHTML += `<p class="text-red-600">Please connect wallet first.</p>`;
+                scrollLog();
                 return;
             }
 
-            const network = 'devnet'; // Hardcoded as this is for the devnet faucet
+            const network = document.getElementById("network").value;
             const nftName = document.getElementById("nftName").value.trim();
             const nftSymbol = document.getElementById("nftSymbol").value.trim();
             const nftUri = document.getElementById("nftUri").value.trim();
             const nftRoyalty = parseInt(document.getElementById("nftRoyalty").value) || 5;
+            const activityLogDiv = document.getElementById("activityLog");
             const deployButton = document.getElementById("deployNftButton");
 
             deployButton.disabled = true;
             deployButton.textContent = "Deploying...";
-            log(`Deploying NFT on ${network}...`, 'info');
+            activityLogDiv.innerHTML += `<p class="text-blue-600">Deploying NFT on ${network}...</p>`;
+            scrollLog();
 
             if (!nftName || !nftSymbol || !nftUri || nftRoyalty < 0 || nftRoyalty > 100) {
-                log("Please fill all NFT fields with valid values.", 'error');
+                activityLogDiv.innerHTML += `<p class="text-red-600">Please fill all NFT fields with valid values.</p>`;
+                scrollLog();
                 deployButton.disabled = false;
                 deployButton.textContent = "Deploy NFT";
                 return;
             }
 
             try {
-                const connection = new Connection(solanaWeb3.clusterApiUrl(network), "confirmed");
+                const connection = new Connection(RPC_URLS[network], "confirmed");
                 const metaplex = Metaplex.make(connection).use({
                     sign: async (tx) => {
-                        // The user's wallet will sign the transaction
-                        const signedTx = await wallet.signTransaction(tx);
-                        return signedTx;
+                        const { signature } = await wallet.signTransaction(tx);
+                        return { signature };
                     },
                     publicKey: wallet.publicKey
                 });
@@ -270,9 +661,13 @@
                     isMutable: true
                 });
 
-                log(`NFT deployed: <strong>${nftName} (${nftSymbol})</strong><br>Mint Address: ${nft.mint.address.toBase58()}<br>Metadata: ${nft.metadataAddress.toBase58()}`, 'success');
+                activityLogDiv.innerHTML += `<p class="text-green-600">NFT deployed: ${nftName} (${nftSymbol})<br>Mint Address: ${nft.mint.address.toBase58()}<br>Metadata: ${nft.metadataAddress.toBase58()}</p>`;
+                scrollLog();
             } catch (error) {
-                log(`NFT deployment failed: ${error.message}`, 'error');
+                activityLogDiv.innerHTML += `<p class="text-red-600">NFT deployment failed: ${error.message}</p>`;
+                errors[`NFT deployment: ${error.message}`] = (errors[`NFT deployment: ${error.message}`] || 0) + 1;
+                updateErrorAnalytics();
+                scrollLog();
             } finally {
                 deployButton.disabled = false;
                 deployButton.textContent = "Deploy NFT";
@@ -281,8 +676,7 @@
 
         // Event Listeners
         document.getElementById("connectWallet").addEventListener("click", connectWallet);
-        document.getElementById("deployTokenButton").addEventListener("click", deployToken);
-        document.getElementById("deployNftButton").addEventListener("click", deployNFT);
+        document.getElementById("testProxiesButton").addEventListener("click", testProxies);
     </script>
 </body>
 </html>
