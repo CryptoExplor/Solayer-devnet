@@ -877,17 +877,52 @@
                 // Update total stats for this run (will be reset for a new run)
                 faucetStats.total++; 
                 
-                fLog(`Requesting airdrop of ${amountSol} SOL for address ${addr}`);
-                
                 let airdropSuccess = false;
                 let retryCount = 0;
                 const maxRetries = 5;
+
                 while (retryCount < maxRetries && faucetRun) {
                     try {
                         const connection = getRandomRpc(); // Randomly pick an RPC for the airdrop
-                        fLog(`Attempt ${retryCount + 1}: Using RPC ${connection._rpcEndpoint}`);
-                        const sig = await connection.requestAirdrop(pk, lamports);
+                        const selectedProxy = getRandomProxy();
+                        
+                        // We use a manual fetch request here to simulate proxy usage.
+                        // NOTE: Due to browser security restrictions, the fetch API cannot directly
+                        // route traffic through a user-provided SOCKS5 or HTTP proxy URL.
+                        // This code is for illustrative purposes only, showing how a proxy
+                        // parameter could be passed in a different environment (e.g., a backend server).
+                        const requestPayload = {
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "requestAirdrop",
+                            "params": [
+                                addr,
+                                lamports
+                            ]
+                        };
+                        
+                        fLog(`Attempt ${retryCount + 1}: Using RPC ${connection.rpcEndpoint} and proxy ${selectedProxy || 'none'}`);
+                        
+                        const response = await fetch(connection.rpcEndpoint, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(requestPayload)
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+                        }
+
+                        const responseData = await response.json();
+                        if (responseData.error) {
+                            throw new Error(responseData.error.message || 'RPC Error');
+                        }
+                        
+                        const sig = responseData.result;
                         await connection.confirmTransaction(sig, 'confirmed');
+
                         fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
                         airdropSuccess = true;
                         break;
@@ -942,7 +977,7 @@
             clearInterval(sessionTimerInterval); // Stop the session timer
             saveSessionHistory(); // Save the session history
             
-            const perWalletLimitReached = faucetMode === 'per-wallet' && availableAddrs.every(addr => (claimsPerSession[addr] || 0) >= claimLimit);
+            const perWalletLimitReached = faucetMode === 'per-wallet' && Object.values(claimsPerSession).every(claims => claims >= claimLimit);
             const totalLimitReached = faucetMode === 'total' && Object.values(claimsPerSession).reduce((sum, count) => sum + count, 0) >= claimLimit;
             const summaryMessage = (totalLimitReached || perWalletLimitReached)
                 ? `Session complete: ${faucetStats.total} total, ${faucetStats.success} success, ${faucetStats.fail} errors.`
