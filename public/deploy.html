@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solayer Devnet — Deploy Tool</title>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Solana Web3 library -->
+    <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+    <!-- SPL Token library for token deployment -->
+    <script src="https://unpkg.com/@solana/spl-token@0.4.8/lib/index.iife.min.js"></script>
+    <!-- Metaplex JS library for NFT deployment -->
+    <script src="https://unpkg.com/@metaplex-foundation/js@0.20.1/dist/web/index.iife.js"></script>
+    <style>
+        /* Custom styles for the app's layout and log panel */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        #activityLog {
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .container {
+            max-width: 800px;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+    <div class="container mx-auto p-4 md:p-8 bg-white rounded-lg shadow-xl">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Solana Deployment Tool</h1>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Left Panel: Controls -->
+            <div class="bg-white p-6 rounded-lg shadow-inner border border-gray-200">
+                <!-- Wallet Connection Section -->
+                <div class="mb-6 pb-4 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-2">Wallet</h2>
+                    <button id="connectWallet" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400 font-bold transition-colors">Connect Wallet</button>
+                    <p id="walletStatus" class="mt-2 text-sm text-gray-600 text-center truncate"></p>
+                </div>
+                
+                <!-- Token Deployment Section -->
+                <div class="mb-6 pb-4 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Deploy SPL Token</h2>
+                    <div class="grid grid-cols-1 gap-4">
+                        <div>
+                            <label for="tokenName" class="block text-sm font-medium text-gray-700">Token Name</label>
+                            <input id="tokenName" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="My Token">
+                        </div>
+                        <div>
+                            <label for="tokenSymbol" class="block text-sm font-medium text-gray-700">Token Symbol</label>
+                            <input id="tokenSymbol" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="MTK">
+                        </div>
+                        <div>
+                            <label for="tokenDecimals" class="block text-sm font-medium text-gray-700">Decimals</label>
+                            <input id="tokenDecimals" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="6" min="0" max="18">
+                        </div>
+                        <div>
+                            <label for="tokenSupply" class="block text-sm font-medium text-gray-700">Initial Supply</label>
+                            <input id="tokenSupply" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="1000000" min="1">
+                        </div>
+                    </div>
+                    <button id="deployTokenButton" class="w-full mt-6 bg-purple-600 text-white p-3 rounded-md hover:bg-purple-700 disabled:bg-gray-400 font-bold transition-colors">Deploy Token</button>
+                </div>
+                
+                <!-- NFT Deployment Section -->
+                <div class="mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Deploy NFT</h2>
+                    <div class="grid grid-cols-1 gap-4">
+                        <div>
+                            <label for="nftName" class="block text-sm font-medium text-gray-700">NFT Name</label>
+                            <input id="nftName" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="My NFT">
+                        </div>
+                        <div>
+                            <label for="nftSymbol" class="block text-sm font-medium text-gray-700">NFT Symbol</label>
+                            <input id="nftSymbol" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="NFT">
+                        </div>
+                        <div>
+                            <label for="nftUri" class="block text-sm font-medium text-gray-700">Metadata URI</label>
+                            <input id="nftUri" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="https://arweave.net/your-file">
+                        </div>
+                        <div>
+                            <label for="nftRoyalty" class="block text-sm font-medium text-gray-700">Royalty (%)</label>
+                            <input id="nftRoyalty" type="number" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="5" min="0" max="100">
+                        </div>
+                    </div>
+                    <button id="deployNftButton" class="w-full mt-6 bg-teal-600 text-white p-3 rounded-md hover:bg-teal-700 disabled:bg-gray-400 font-bold transition-colors">Deploy NFT</button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Logs and Stats -->
+            <div class="bg-white p-6 rounded-lg shadow-inner border border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-800 mb-2">Activity Log</h2>
+                <div id="activityLog" class="text-sm text-gray-600 border p-4 rounded-md bg-gray-50 h-64">
+                    <p>Connect your wallet to get started.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Import necessary components from the Solana libraries
+        const { PublicKey, Connection, Keypair } = solanaWeb3;
+        const { createMint, getOrCreateAssociatedTokenAccount, mintTo } = solanaSPLToken;
+        const { Metaplex } = metaplexJs;
+        
+        let wallet = null;
+
+        // Log messages to the UI
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById("activityLog");
+            const p = document.createElement("p");
+            p.innerHTML = message;
+            if (type === 'success') {
+                p.classList.add("text-green-600");
+            } else if (type === 'error') {
+                p.classList.add("text-red-600");
+            } else {
+                p.classList.add("text-gray-600");
+            }
+            logDiv.appendChild(p);
+            logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll
+        }
+
+        // Connect to the Phantom wallet
+        async function connectWallet() {
+            const connectButton = document.getElementById("connectWallet");
+            const walletStatus = document.getElementById("walletStatus");
+            try {
+                if (window.solana && window.solana.isPhantom) {
+                    await window.solana.connect();
+                    wallet = window.solana;
+                    walletStatus.innerText = `Connected: ${wallet.publicKey.toString()}`;
+                    connectButton.textContent = "Wallet Connected";
+                    connectButton.disabled = true;
+                    log(`Wallet connected: ${wallet.publicKey.toString()}`, 'success');
+                } else {
+                    walletStatus.innerText = "Phantom wallet not found. Please install it.";
+                    log("Phantom wallet not found. Please install it.", 'error');
+                }
+            } catch (error) {
+                walletStatus.innerText = `Connection failed: ${error.message}`;
+                log(`Connection failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Deploy an SPL Token
+        async function deployToken() {
+            if (!wallet) {
+                log("Please connect wallet first.", 'error');
+                return;
+            }
+
+            const network = 'devnet'; // Hardcoded as this is for the devnet faucet
+            const tokenName = document.getElementById("tokenName").value.trim();
+            const tokenSymbol = document.getElementById("tokenSymbol").value.trim();
+            const tokenDecimals = parseInt(document.getElementById("tokenDecimals").value) || 6;
+            const tokenSupply = parseInt(document.getElementById("tokenSupply").value) || 1000000;
+            const deployButton = document.getElementById("deployTokenButton");
+
+            deployButton.disabled = true;
+            deployButton.textContent = "Deploying...";
+            log(`Deploying token on ${network}...`, 'info');
+
+            if (!tokenName || !tokenSymbol || tokenDecimals < 0 || tokenSupply <= 0) {
+                log("Please fill all token fields with valid values.", 'error');
+                deployButton.disabled = false;
+                deployButton.textContent = "Deploy Token";
+                return;
+            }
+
+            try {
+                const connection = new Connection(solanaWeb3.clusterApiUrl(network), "confirmed");
+                const payer = wallet;
+
+                const mint = Keypair.generate();
+                const mintAuthority = payer.publicKey;
+                const freezeAuthority = null;
+
+                const mintAccount = await createMint(
+                    connection,
+                    payer,
+                    mintAuthority,
+                    freezeAuthority,
+                    tokenDecimals,
+                    mint
+                );
+
+                const tokenAccount = await getOrCreateAssociatedTokenAccount(
+                    connection,
+                    payer,
+                    mintAccount,
+                    payer.publicKey
+                );
+
+                await mintTo(
+                    connection,
+                    payer,
+                    mintAccount,
+                    tokenAccount.address,
+                    payer.publicKey,
+                    tokenSupply * Math.pow(10, tokenDecimals)
+                );
+
+                log(`Token deployed: <strong>${tokenName} (${tokenSymbol})</strong><br>Mint Address: ${mintAccount.toBase58()}<br>Supply: ${tokenSupply} tokens`, 'success');
+            } catch (error) {
+                log(`Token deployment failed: ${error.message}`, 'error');
+            } finally {
+                deployButton.disabled = false;
+                deployButton.textContent = "Deploy Token";
+            }
+        }
+
+        // Deploy an NFT
+        async function deployNFT() {
+            if (!wallet) {
+                log("Please connect wallet first.", 'error');
+                return;
+            }
+
+            const network = 'devnet'; // Hardcoded as this is for the devnet faucet
+            const nftName = document.getElementById("nftName").value.trim();
+            const nftSymbol = document.getElementById("nftSymbol").value.trim();
+            const nftUri = document.getElementById("nftUri").value.trim();
+            const nftRoyalty = parseInt(document.getElementById("nftRoyalty").value) || 5;
+            const deployButton = document.getElementById("deployNftButton");
+
+            deployButton.disabled = true;
+            deployButton.textContent = "Deploying...";
+            log(`Deploying NFT on ${network}...`, 'info');
+
+            if (!nftName || !nftSymbol || !nftUri || nftRoyalty < 0 || nftRoyalty > 100) {
+                log("Please fill all NFT fields with valid values.", 'error');
+                deployButton.disabled = false;
+                deployButton.textContent = "Deploy NFT";
+                return;
+            }
+
+            try {
+                const connection = new Connection(solanaWeb3.clusterApiUrl(network), "confirmed");
+                const metaplex = Metaplex.make(connection).use({
+                    sign: async (tx) => {
+                        // The user's wallet will sign the transaction
+                        const signedTx = await wallet.signTransaction(tx);
+                        return signedTx;
+                    },
+                    publicKey: wallet.publicKey
+                });
+
+                const { nft } = await metaplex.nfts().create({
+                    uri: nftUri,
+                    name: nftName,
+                    symbol: nftSymbol,
+                    sellerFeeBasisPoints: nftRoyalty * 100,
+                    creators: [{ address: wallet.publicKey, share: 100 }],
+                    isMutable: true
+                });
+
+                log(`NFT deployed: <strong>${nftName} (${nftSymbol})</strong><br>Mint Address: ${nft.mint.address.toBase58()}<br>Metadata: ${nft.metadataAddress.toBase58()}`, 'success');
+            } catch (error) {
+                log(`NFT deployment failed: ${error.message}`, 'error');
+            } finally {
+                deployButton.disabled = false;
+                deployButton.textContent = "Deploy NFT";
+            }
+        }
+
+        // Event Listeners
+        document.getElementById("connectWallet").addEventListener("click", connectWallet);
+        document.getElementById("deployTokenButton").addEventListener("click", deployToken);
+        document.getElementById("deployNftButton").addEventListener("click", deployNFT);
+    </script>
+</body>
+</html>
