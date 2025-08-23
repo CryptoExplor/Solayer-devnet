@@ -235,26 +235,9 @@
                     <input id="amtFaucet" type="number" step="0.001" value="1" />
                 </div>
             </div>
-            <!-- Start of new proxy selection UI -->
-            <div class="proxy-fetch-section full-width">
-                <div class="full-width">
-                    <label>Proxy Type</label>
-                    <select id="proxyTypeSelect">
-                        <option value="socks5">SOCKS5</option>
-                        <option value="socks4">SOCKS4</option>
-                        <option value="http">HTTP</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Proxy Source URL</label>
-                    <input id="proxySourceUrl" type="url" readonly />
-                </div>
-                <button id="fetchProxiesBtn">Fetch Proxies</button>
-            </div>
-            <!-- End of new proxy selection UI -->
             <div style="margin-top:8px">
                 <label>Proxy URL(s) (optional, one per line)</label>
-                <textarea id="proxyUrls" rows="3" placeholder="socks5://127.0.0.1:8080\nsocks5://another.proxy.com:8080\n..."></textarea>
+                <textarea id="proxyUrls" rows="3" placeholder="socks5://127.0.0.1:8080&#10;socks5://another.proxy.com:8080&#10;..."></textarea>
             </div>
             <div class="row" style="margin-top:8px">
                 <div>
@@ -277,7 +260,7 @@
                 </div>
             </div>
             <label style="margin-top:8px">Wallet addresses (one per line, base58)</label>
-            <textarea id="addrsFaucet" rows="6" placeholder="9x3H...\nC4nDy...\n..."></textarea>
+            <textarea id="addrsFaucet" rows="6" placeholder="9x3H...&#10;C4nDy...&#10;..."></textarea>
             <div id="wallet-status-container" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
                 <!-- Wallet status pills will be dynamically inserted here -->
             </div>
@@ -382,37 +365,6 @@
         // Session history variables
         let sessionHistory = [];
         const SESSION_HISTORY_KEY = "faucetSessionHistory";
-
-        // Proxy source URLs
-        const proxySources = {
-            socks5: "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
-            socks4: "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks4.txt",
-            http: "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt"
-        };
-        
-        // Tooling for fetching proxies
-        async function fetchTool(query, url) {
-            try {
-                // The tool call to fetch the content from the proxy website
-                const response = await fetch('/api/v1/browsing', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ query: query, url: url }),
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Error fetching content: ${response.statusText}`);
-                }
-
-                const result = await response.json();
-                return result.content;
-            } catch (error) {
-                console.error("Tool call failed:", error);
-                throw error;
-            }
-        }
         
         // Helper function to create a clickable explorer link
         function createExplorerLink(signature) {
@@ -443,10 +395,6 @@
             if (storedSessionHistory) {
                 sessionHistory = JSON.parse(storedSessionHistory);
             }
-
-            // Set the initial proxy source URL based on the default selection
-            const proxyType = $("proxyTypeSelect").value;
-            $("proxySourceUrl").value = proxySources[proxyType];
             
             updateFaucetStats();
             setupEventListeners();
@@ -465,15 +413,7 @@
             const faucetModeSelect = $("faucetMode");
             const themeToggleBtn = $("themeToggle");
             const resetSessionBtn = $("resetSession");
-            const fetchProxiesBtn = $("fetchProxiesBtn");
-
-            // New: Add a listener for the proxy type selection
-            const proxyTypeSelect = $("proxyTypeSelect");
-            proxyTypeSelect.onchange = (event) => {
-                const selectedType = event.target.value;
-                $("proxySourceUrl").value = proxySources[selectedType];
-            };
-
+            
             // Add handler for addresses textarea to create pills on input
             const addrsFaucetTextarea = $("addrsFaucet");
             addrsFaucetTextarea.oninput = () => {
@@ -512,7 +452,6 @@
             downloadClaimsBtn.onclick = downloadClaims;
             faucetModeSelect.onchange = handleFaucetModeChange;
             themeToggleBtn.onclick = toggleTheme;
-            fetchProxiesBtn.onclick = fetchProxies;
             
             // New reset session button handler
             resetSessionBtn.onclick = () => {
@@ -755,40 +694,6 @@
             }
         }
 
-        // ===== Proxy Fetching Logic =====
-        async function fetchProxies() {
-            const proxySourceUrl = $("proxySourceUrl").value;
-            if (!proxySourceUrl) {
-                showMessage("Please enter a proxy source URL.");
-                return;
-            }
-            
-            fLog(`Fetching proxies from ${proxySourceUrl}...`);
-            const fetchBtn = $("fetchProxiesBtn");
-            const originalBtnText = fetchBtn.textContent;
-            fetchBtn.textContent = "Fetching...";
-            fetchBtn.disabled = true;
-            
-            try {
-                const textContent = await fetchTool("Fetch proxies from GitHub raw URL", proxySourceUrl);
-                
-                // The new source is a plain text file, so we just split by newlines
-                const proxies = textContent.split('\n').map(p => p.trim()).filter(Boolean);
-                
-                if (proxies.length > 0) {
-                    $("proxyUrls").value = proxies.join('\n');
-                    fLog(`✅ Successfully fetched ${proxies.length} proxies.`);
-                } else {
-                    fLog(`⚠️ No proxies found in the fetched content. The file might be empty or in a different format.`);
-                }
-            } catch (error) {
-                fLog(`❌ Failed to fetch proxies: ${error.message}`);
-            } finally {
-                fetchBtn.textContent = originalBtnText;
-                fetchBtn.disabled = false;
-            }
-        }
-
         // ===== Faucet Auto‑Claimer Logic =====
         function fLog(msg) {
             const ts = new Date().toLocaleTimeString();
@@ -825,8 +730,6 @@
             $("cooldown").disabled = disabled;
             $("startFaucet").disabled = disabled;
             $("stopFaucet").disabled = !disabled;
-            $("fetchProxiesBtn").disabled = disabled;
-            $("proxyTypeSelect").disabled = disabled; // Disable the select dropdown
         }
 
         // Function to select a random RPC from the list
