@@ -276,7 +276,7 @@
             <div class="row" style="margin-top:8px">
                 <div>
                     <label>RPC URL(s) (comma-separated for failover)</label>
-                    <input id="rpcFaucet" value="https://api.devnet.solana.com" />
+                    <input id="rpcFaucet" value="https://api.devnet.solana.com,https://rpc.ankr.com/solana_devnet,https://devnet.helius-rpc.com/?api-key=aed3728a-2f1d-4eff-a21f-0b7fbe67c29f,https://solitary-evocative-arm.solana-devnet.quiknode.pro/077b7178cdc7a8cd58fcd835370b8278e5ee22de/" />
                 </div>
                 <div>
                     <label>Amount per airdrop (SOL)</label>
@@ -373,7 +373,6 @@
                 <ul>
                     <li><strong>Airdrop Amount:</strong> Up to 5 SOL per request.</li>
                     <li><strong>Request Limit:</strong> 2 requests every 8 hours per address/IP.</li>
-                    <li><strong>Daily Cap:</strong> Approximately 10 SOL daily.</li>
                     <li><strong>RPC Rate Limits:</strong> Maximum 100 requests per 10 seconds per IP, 40 per single RPC method, and 40 concurrent connections. Airdrop-specific limit is 1 request per 10 seconds.</li>
                 </ul>
             </p>
@@ -749,8 +748,6 @@
                     } else if (status === 'skipped') {
                         textContent += ` ⏭`;
                         pill.className = `pill`;
-                    } else if (status === 'active') {
-                        pill.className = `pill active`;
                     } else { // Idle state for cleanup
                         pill.className = `pill`;
                     }
@@ -937,45 +934,34 @@
 
                 while (retryCount < maxRetries && faucetRun) {
                     try {
-                        const connection = getRandomRpc(); // Randomly pick an RPC for the airdrop
-                        const selectedProxy = getRandomProxy();
+                        const rpc = getRandomRpc();
+                        const proxy = getRandomProxy();
                         
                         // We use a manual fetch request here to simulate proxy usage.
-                        // NOTE: Due to browser security restrictions, the fetch API cannot directly
-                        // route traffic through a user-provided SOCKS5 or HTTP proxy URL.
-                        // This code is for illustrative purposes only, showing how a proxy
-                        // parameter could be passed in a different environment (e.g., a backend server).
-                        const requestPayload = {
-                            "jsonrpc": "2.0",
-                            "id": 1,
-                            "method": "requestAirdrop",
-                            "params": [
-                                addr,
-                                lamports
-                            ]
-                        };
+                        // Instead of a direct RPC call, we'll hit our Vercel serverless function.
+                        fLog(`Attempt ${retryCount + 1}: Using RPC ${rpc.rpcEndpoint} and proxy ${proxy || 'none'}`);
                         
-                        fLog(`Attempt ${retryCount + 1}: Using RPC ${connection.rpcEndpoint} and proxy ${selectedProxy || 'none'}`);
-                        
-                        const response = await fetch(connection.rpcEndpoint, {
+                        const response = await fetch('/api/airdrop', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify(requestPayload)
+                            body: JSON.stringify({
+                                address: addr,
+                                amount: lamports,
+                                rpc: rpc.rpcEndpoint,
+                                proxy: proxy
+                            })
                         });
 
-                        if (!response.ok) {
-                            throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
-                        }
-
                         const responseData = await response.json();
-                        if (responseData.error) {
-                            throw new Error(responseData.error.message || 'RPC Error');
+
+                        if (!response.ok) {
+                            throw new Error(responseData.message || `HTTP Error: ${response.status}`);
                         }
                         
-                        const sig = responseData.result;
-                        await connection.confirmTransaction(sig, 'confirmed');
+                        const sig = responseData.signature;
+                        await rpc.confirmTransaction(sig, 'confirmed');
 
                         fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
                         airdropSuccess = true;
@@ -1067,3 +1053,4 @@
     </script>
 </body>
 </html>
+�
