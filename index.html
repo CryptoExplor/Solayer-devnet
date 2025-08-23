@@ -200,6 +200,30 @@
             margin-bottom: 4px;
         }
         
+        /* New styles for the top navigation */
+        .top-nav {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .top-nav a {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: background-color 0.3s;
+        }
+        .top-nav a:hover {
+            background-color: var(--panel);
+        }
+        .top-nav a.active {
+            background-color: var(--accent);
+            color: #fff;
+        }
+        
         /* Mobile-first adjustments for better responsiveness */
         @media (max-width: 600px) {
             .wrap {
@@ -212,11 +236,23 @@
             .proxy-fetch-section {
                 grid-template-columns: 1fr;
             }
+            .top-nav {
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="wrap">
+        <!-- New navigation bar -->
+        <nav class="top-nav">
+            <a href="soldev.html" class="active">1 Solana Devnet Faucet</a>
+            <a href="soltest.html">2 Solana Testnet Faucet</a>
+            <a href="deploy.html">3 Deploy</a>
+        </nav>
+        
         <h1>Solayer Devnet — Faucet Auto‑Claimer</h1>
         
         <!-- Faucet Tab -->
