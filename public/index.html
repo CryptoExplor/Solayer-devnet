@@ -412,6 +412,7 @@
         let rpcUrls = [];
         let proxyUrls = []; // New array for proxy URLs
         let isWaitingForCooldown = false; // New flag to prevent log spam
+        let walletBalances = {}; // New object to store balances
 
         // Timer variables
         let sessionTimerInterval = null;
@@ -497,6 +498,7 @@
                 totalClaimsPerWallet = {};
                 claimsPerSession = {};
                 walletCooldowns = {}; // Reset cooldowns
+                walletBalances = {}; // Reset balances
                 sessionHistory = []; // Clear session history
                 updateFaucetStats();
                 renderErrorAnalytics(); // Clear error analytics
@@ -513,6 +515,7 @@
             resetSessionBtn.onclick = () => {
                 claimsPerSession = {}; // Reset the session counter
                 walletCooldowns = {}; // Reset cooldowns
+                walletBalances = {}; // Reset balances for a new session
                 faucetStats.success = 0; // Reset session success count
                 faucetStats.fail = 0; // Reset session error count
                 faucetStats.total = 0; // Reset session total count
@@ -701,23 +704,30 @@
                 
                 const sessionClaims = claimsPerSession[addr] || 0;
                 const totalClaims = totalClaimsPerWallet[addr] || 0;
+                const solBalance = (walletBalances[addr] !== undefined) ? (walletBalances[addr] / 1e9).toFixed(2) : '...';
 
-                const textContent = `${addr.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims})`;
+                const textContent = `${addr.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims} | ${solBalance} SOL)`;
 
                 pill.textContent = textContent;
-                pill.title = `${addr} - ✅ This session claims, 📦 Lifetime claims`;
+                pill.title = `${addr} - ✅ This session claims, 📦 Lifetime claims, Balance: ${solBalance} SOL`;
                 container.appendChild(pill);
             });
         }
 
-        function updateWalletStatusUI(address, status, message) {
+        function updateWalletStatusUI(address, status, message, balance = null) {
+            if (balance !== null) {
+                walletBalances[address] = balance;
+            }
+            
             const pill = $(`status-${address}`);
             if (pill) {
                 const sessionClaims = claimsPerSession[address] || 0;
                 const totalClaims = totalClaimsPerWallet[address] || 0;
                 const retries = faucetStats.retries[address] || 0;
                 
-                let textContent = `${address.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims})`;
+                const solBalance = (walletBalances[address] !== undefined) ? (walletBalances[address] / 1e9).toFixed(2) : '...';
+                
+                let textContent = `${address.substring(0, 4)}... (✅${sessionClaims} | 📦${totalClaims} | ${solBalance} SOL)`;
                 
                 const cooldownEnd = walletCooldowns[address];
                 if (cooldownEnd && cooldownEnd > Date.now()) {
@@ -804,6 +814,7 @@
         async function faucetLoop(addresses) {
             claimsPerSession = {};
             walletCooldowns = {};
+            walletBalances = {}; // Reset balances for a new loop
             
             createWalletStatusPills(addresses);
 
@@ -886,7 +897,7 @@
                     pk = new solanaWeb3.PublicKey(addr);
                 } catch (e) {
                     fLog(`❌ Skipping invalid address: ${addr}. Error: ${e.message}`);
-                    updateWalletStatusUI(addr, 'fail', `Invalid address.`);
+                    updateWalletStatusUI(addr, 'err', `Invalid address.`);
                     await sleep(1000);
                     continue;
                 }
@@ -901,19 +912,24 @@
                 }
                 
                 updateWalletStatusUI(addr, 'active', `Attempting airdrop...`);
+                let currentBalance = null;
 
                 try {
                     // Use a new connection for each balance check to spread load
                     const tempConnection = getRandomRpc();
                     const balance = await tempConnection.getBalance(pk);
+                    currentBalance = balance;
+                    updateWalletStatusUI(addr, 'active', `Checking balance...`, currentBalance);
+                    fLog(`🔍 Checking balance for ${addr.substring(0, 8)}...: ${(balance / 1e9).toFixed(2)} SOL`);
+                    
                     if (balance > skipLamports) {
-                        fLog(`⏭ Skipping ${addr}. Balance (${(balance / 1e9).toFixed(2)} SOL) is already sufficient.`);
-                        updateWalletStatusUI(addr, 'skipped', `Balance sufficient: ${(balance / 1e9).toFixed(2)} SOL`);
+                        fLog(`⏭ Skipping ${addr.substring(0, 8)}.... Balance (${(balance / 1e9).toFixed(2)} SOL) is already sufficient.`);
+                        updateWalletStatusUI(addr, 'skipped', `Balance sufficient: ${(balance / 1e9).toFixed(2)} SOL`, currentBalance);
                         await sleep(1000);
                         continue;
                     }
                 } catch(e) {
-                    fLog(`⚠️ Could not check balance for ${addr}: ${e?.message || e}. Proceeding with airdrop.`);
+                    fLog(`⚠️ Could not check balance for ${addr.substring(0, 8)}...: ${e?.message || e}. Proceeding with airdrop.`);
                     incrementErrorCount(categorizeError(e?.message || 'Unknown Error'));
                 }
                 
@@ -966,8 +982,11 @@
                         const sig = responseData.result;
                         await connection.confirmTransaction(sig, 'confirmed');
 
+                        const newBalance = await connection.getBalance(pk);
+                        
                         fLog(`✅ Airdrop confirmed! TX: ${createExplorerLink(sig)}`);
                         airdropSuccess = true;
+                        updateWalletStatusUI(addr, 'ok', `Airdrop successful.`, newBalance);
                         break;
                     } catch (e) {
                         const delay = Math.min(Math.pow(2, retryCount) * 1000, 30000); // Exponential backoff
@@ -999,11 +1018,11 @@
                     // Set cooldown for this wallet using the new configurable value
                     walletCooldowns[addr] = Date.now() + cooldownSec * 1000;
                     
-                    updateWalletStatusUI(addr, 'ok', `Airdrop successful.`);
+                    // No need to update UI here, it's done in the try block
                 } else {
                     faucetStats.fail++;
-                    fLog(`❌ Failed to airdrop to ${addr} after multiple retries.`);
-                    updateWalletStatusUI(addr, 'err', `Airdrop failed.`);
+                    fLog(`❌ Failed to airdrop to ${addr.substring(0, 8)}... after multiple retries.`);
+                    updateWalletStatusUI(addr, 'err', `Airdrop failed.`, currentBalance);
                 }
                 
                 updateFaucetStats();
@@ -1027,7 +1046,7 @@
                 : `Stopped manually: ${faucetStats.total} total, ${faucetStats.success} success, ${faucetStats.fail} errors.`;
             showMessage(summaryMessage);
             
-            addresses.forEach(addr => updateWalletStatusUI(addr, 'idle', 'Idle'));
+            addresses.forEach(addr => updateWalletStatusUI(addr, 'idle', 'Idle', walletBalances[addr]));
             
             toggleFaucetInputs(false);
             $('stopFaucet').textContent = '⏹ Stop';
