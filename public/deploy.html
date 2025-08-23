@@ -130,13 +130,17 @@
         async function connectWallet() {
             const connectButton = document.getElementById("connectWallet");
             const walletStatus = document.getElementById("walletStatus");
+            connectButton.disabled = true;
+            connectButton.textContent = "Connecting...";
+
             try {
                 if (window.solana && window.solana.isPhantom) {
                     await window.solana.connect();
                     wallet = window.solana;
                     walletStatus.innerText = `Connected: ${wallet.publicKey.toString()}`;
                     connectButton.textContent = "Wallet Connected";
-                    connectButton.disabled = true;
+                    connectButton.classList.remove("bg-blue-600", "hover:bg-blue-700");
+                    connectButton.classList.add("bg-gray-400");
                     log(`Wallet connected: ${wallet.publicKey.toString()}`, 'success');
                 } else {
                     walletStatus.innerText = "Phantom wallet not found. Please install it.";
@@ -145,6 +149,12 @@
             } catch (error) {
                 walletStatus.innerText = `Connection failed: ${error.message}`;
                 log(`Connection failed: ${error.message}`, 'error');
+            } finally {
+                // Re-enable the button if it's still in the connecting state
+                if (connectButton.textContent === "Connecting...") {
+                    connectButton.disabled = false;
+                    connectButton.textContent = "Connect Wallet";
+                }
             }
         }
 
